@@ -21,10 +21,9 @@ pip install "shap-relativities[all]"
 Or pick what you need:
 
 ```bash
-pip install "shap-relativities[ml]"       # shap + lightgbm + xgboost
-pip install "shap-relativities[viz]"      # matplotlib for plots
-pip install "shap-relativities[datasets]" # scikit-learn for load_motor()
-pip install shap-relativities             # core only (numpy, pandas, scipy)
+pip install "shap-relativities[ml]"    # shap + lightgbm + scikit-learn
+pip install "shap-relativities[plot]"  # matplotlib for plots
+pip install shap-relativities          # core only (numpy, pandas, scipy)
 ```
 
 ---
@@ -197,7 +196,7 @@ SHAPRelativities(
 | `.validate()` | `dict[str, CheckResult]` | Diagnostic checks: reconstruction, feature coverage, sparse levels. |
 | `.baseline()` | `float` | `exp(expected_value)` — the base rate in prediction space. |
 | `.shap_values()` | `np.ndarray` | Raw SHAP values, shape `(n_obs, n_features)`. |
-| `.plot_relativities(features, show_ci, figsize)` | None | Bar charts (categorical) and line charts (continuous). Requires `[viz]`. |
+| `.plot_relativities(features, show_ci, figsize)` | None | Bar charts (categorical) and line charts (continuous). Requires `[plot]`. |
 | `.to_dict()` | `dict` | Serialisable state. Does not include the original model. |
 | `.from_dict(data)` | `SHAPRelativities` | Reconstruct from `to_dict()` output. |
 
