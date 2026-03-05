@@ -1,5 +1,5 @@
 """
-Tests for shap-relativities.
+Tests for SHAP relativities module.
 
 Five test groups:
 
@@ -31,8 +31,8 @@ try:
 except ImportError:
     _DEPS_AVAILABLE = False
 
-from conftest import TRUE_FREQ_PARAMS, generate_motor_data
 from shap_relativities import SHAPRelativities, extract_relativities
+from shap_relativities.datasets.motor import TRUE_FREQ_PARAMS, load_motor
 
 pytestmark = pytest.mark.skipif(
     not _DEPS_AVAILABLE,
@@ -47,7 +47,7 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(scope="module")
 def motor_data() -> pd.DataFrame:
     """10k policy synthetic dataset — fast to generate, stable enough for GLM tests."""
-    return generate_motor_data(n_policies=10_000, seed=42)
+    return load_motor(n_policies=10_000, seed=42)
 
 
 @pytest.fixture(scope="module")
@@ -99,6 +99,9 @@ class TestReconstruction:
         """
         exp(shap_values.sum(axis=1) + expected_value) must match
         model.predict() to within 1e-4.
+
+        This verifies that model_output="raw" was used correctly and that
+        TreeExplainer's efficiency axiom holds for this model.
         """
         model, X, _ = lgb_model_and_X
 
@@ -146,7 +149,7 @@ class TestRelativityRecovery:
     def test_ncd_relativity_direction(self, lgb_model_and_X) -> None:
         """
         NCD=5 should have lower relativity than NCD=0. The true DGP has
-        ncd_years coefficient = -0.12, so NCD=5 vs NCD=0 gives exp(-0.6) ~ 0.549.
+        ncd_years coefficient = -0.12, so NCD=5 vs NCD=0 gives exp(-0.6) ≈ 0.549.
         """
         model, X, _ = lgb_model_and_X
 
@@ -177,7 +180,7 @@ class TestRelativityRecovery:
     def test_conviction_relativity_above_one(self, lgb_model_and_X) -> None:
         """
         has_convictions=1 should have a relativity > 1 relative to
-        has_convictions=0. True coefficient is +0.45 -> exp(0.45) ~ 1.57.
+        has_convictions=0. True coefficient is +0.45 → exp(0.45) ≈ 1.57.
         """
         model, X, _ = lgb_model_and_X
 
@@ -238,7 +241,7 @@ class TestRelativityRecovery:
         """
         model, X, _ = lgb_model_and_X
 
-        true_ratio = math.exp(TRUE_FREQ_PARAMS["ncd_years"] * 5)  # exp(-0.6) ~ 0.549
+        true_ratio = math.exp(TRUE_FREQ_PARAMS["ncd_years"] * 5)  # exp(-0.6) ≈ 0.549
 
         sr = SHAPRelativities(
             model=model,
@@ -295,6 +298,10 @@ class TestNormalisation:
     def test_mean_mode_geometric_mean_is_one(self, lgb_model_and_X) -> None:
         """
         In mean mode, the exposure-weighted geometric mean relativity = 1.0.
+
+        The log-space normalisation subtracts the exposure-weighted mean of
+        mean_shap values. This means the geometric weighted mean of relativities
+        equals 1.0 (i.e. the weighted mean of log(relativity) = 0).
         """
         model, X, df = lgb_model_and_X
 
@@ -311,6 +318,8 @@ class TestNormalisation:
 
         for feat in ["area_code", "ncd_years", "has_convictions"]:
             feat_rels = rels[rels["feature"] == feat]
+            # Geometric weighted mean: exp(weighted_mean(log(relativities))) = 1
+            # i.e. weighted_mean(log(relativities)) == 0
             wm_log = np.average(
                 np.log(feat_rels["relativity"]),
                 weights=feat_rels["exposure_weight"],
@@ -364,7 +373,7 @@ class TestValidation:
         assert "feature_coverage" in checks
 
     def test_feature_coverage_always_passes(self, lgb_model_and_X) -> None:
-        """All X columns should appear in SHAP output."""
+        """All X columns should appear in SHAP output — coverage always passes."""
         model, X, _ = lgb_model_and_X
 
         sr = SHAPRelativities(
@@ -417,10 +426,11 @@ class TestEdgeCases:
     ) -> None:
         """
         A categorical feature with only one unique value should produce
-        relativity = 1.0.
+        relativity = 1.0 (it contributes nothing to discrimination).
         """
         model, X, _ = lgb_model_and_X
 
+        # Create a version of X where area_code is always 0
         X_const = X.copy()
         X_const["area_code"] = 0
 

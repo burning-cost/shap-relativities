@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "shap-relativities"
 version = "0.1.0"
-description = "Extract actuarial-grade multiplicative rating relativities from GBMs via SHAP"
+description = "Extract multiplicative rating relativities from GBM models using SHAP values. Built for insurance pricing."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -20,17 +20,21 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "numpy>=1.24",
-    "pandas>=2.0",
-    "shap>=0.42",
+    "numpy",
+    "pandas",
+    "scipy",
 ]
 
 [project.optional-dependencies]
-lightgbm = ["lightgbm>=4.0"]
-xgboost = ["xgboost>=2.0"]
-plot = ["matplotlib>=3.7"]
-all = ["lightgbm>=4.0", "xgboost>=2.0", "matplotlib>=3.7", "statsmodels>=0.14"]
-dev = ["pytest>=7.0", "lightgbm>=4.0", "xgboost>=2.0", "matplotlib>=3.7"]
+ml = [
+    "shap",
+    "lightgbm",
+    "xgboost",
+    "matplotlib",
+]
+dev = [
+    "pytest",
+]
 
 [project.urls]
 Homepage = "https://github.com/burning-cost/shap-relativities"
