@@ -219,7 +219,7 @@ def _calculate_earned_exposure(df: pd.DataFrame) -> pd.Series:
     Calculate earned exposure in years for each policy row.
 
     Simple single-year version used internally during dataset generation.
-    The full multi-year splitting is in ``burning_cost.data.exposure``.
+    The full multi-year splitting is handled by external tooling.
     """
     days = (
         pd.to_datetime(df["expiry_date"]) - pd.to_datetime(df["inception_date"])
