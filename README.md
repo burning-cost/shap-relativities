@@ -10,6 +10,8 @@ So the GBM sits in a notebook. The GLM goes to production.
 
 `shap-relativities` closes that gap. It extracts multiplicative rating relativities from LightGBM and XGBoost models using SHAP values — the same format as `exp(beta)` from a GLM, with confidence intervals, exposure weighting, and a validation check that the numbers actually reconstruct the model's predictions.
 
+**Blog post:** [Extracting Rating Relativities from GBMs with SHAP](https://burningcost.github.io/2026/03/05/extracting-rating-relativities-from-gbms-with-shap/) — worked example, the maths, and a discussion of limitations for presenting to regulators and pricing committees.
+
 ---
 
 ## Installation
