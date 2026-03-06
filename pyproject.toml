@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shap-relativities"
-version = "0.1.0"
+version = "0.2.0"
 description = "Extract multiplicative rating relativities from GBM models using SHAP values. Built for insurance pricing."
 readme = "README.md"
 license = "MIT"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = [
     "shap", "insurance", "pricing", "actuarial", "relativities",
-    "gbm", "lightgbm", "xgboost",
+    "gbm", "catboost", "xgboost", "lightgbm",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -29,17 +29,21 @@ classifiers = [
     "Topic :: Office/Business :: Financial",
 ]
 dependencies = [
-    "pandas>=2.0",
+    "polars>=0.20",
     "numpy>=1.24",
     "scipy>=1.7",
 ]
 
 [project.optional-dependencies]
-# shap + tree model libraries — needed to compute SHAP values from a model
+# shap + tree model libraries — needed to compute SHAP values from a model.
+# CatBoost is the default and recommended GBM for insurance pricing.
+# pandas is a required bridge dependency: shap's TreeExplainer uses it
+# internally for column name handling. It is not used in the library API.
 ml = [
     "shap>=0.42",
-    "lightgbm>=4.0",
+    "catboost>=1.2",
     "scikit-learn>=1.3",
+    "pandas>=2.0",
 ]
 # matplotlib for plot_relativities()
 plot = [
@@ -48,15 +52,24 @@ plot = [
 # Everything — use this for a complete install
 all = [
     "shap>=0.42",
-    "lightgbm>=4.0",
+    "catboost>=1.2",
     "scikit-learn>=1.3",
+    "pandas>=2.0",
     "matplotlib>=3.7",
+]
+# Optional: alternative GBMs — supported but not the default
+lightgbm = [
+    "lightgbm>=4.0",
+]
+xgboost = [
+    "xgboost>=2.0",
 ]
 dev = [
     "pytest",
-    "lightgbm>=4.0",
+    "catboost>=1.2",
     "shap>=0.42",
     "scikit-learn>=1.3",
+    "pandas>=2.0",
     "matplotlib>=3.7",
 ]
 

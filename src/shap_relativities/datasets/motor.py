@@ -28,6 +28,12 @@ The true severity model is:
 
 These parameters are exported as ``TRUE_FREQ_PARAMS`` and ``TRUE_SEV_PARAMS``
 so test code can check GLM recovery.
+
+Output
+------
+load_motor() returns a Polars DataFrame. All data manipulation uses Polars
+internally; numpy is used only for numerical generation via numpy's random
+number generator.
 """
 
 from __future__ import annotations
@@ -37,7 +43,7 @@ from datetime import date, timedelta
 from typing import Final
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 # ---------------------------------------------------------------------------
 # True DGP parameters — these are what a correctly specified GLM should recover
@@ -88,16 +94,15 @@ def _driver_age_effect(ages: np.ndarray) -> np.ndarray:
     return effect
 
 
-def _generate_policies(n: int, rng: np.random.Generator) -> pd.DataFrame:
+def _generate_policies(n: int, rng: np.random.Generator) -> dict:
     """
-    Generate the policy characteristics table.
+    Generate the policy characteristics table as a dict of arrays.
 
     All policies span a 5-year window (2019-2023) with realistic inception
     date spread. Exposure is not all 1.0: ~8% are cancellations (short-term),
     ~5% are mid-term inceptions in the last year of the window.
     """
     # Policy dates: 5 policy years, 2019-2023
-    # Inception dates spread across all 5 years
     base_date = date(2019, 1, 1)
     total_days = 5 * 365  # rough span
 
@@ -125,7 +130,6 @@ def _generate_policies(n: int, rng: np.random.Generator) -> pd.DataFrame:
             expiry_dates.append(full_expiry)
 
     # Driver age: realistic UK motor book distribution
-    # Weighted towards 30-60 bracket (bulk of book), long tail young and old
     driver_ages = np.concatenate([
         rng.integers(17, 25, size=int(n * 0.12)),   # young drivers ~12%
         rng.integers(25, 40, size=int(n * 0.30)),   # young adult
@@ -137,15 +141,12 @@ def _generate_policies(n: int, rng: np.random.Generator) -> pd.DataFrame:
     rng.shuffle(driver_ages)
 
     # Driver experience: correlated with age but not perfectly
-    # Can't have more experience than years since 17
     max_exp = np.clip(driver_ages - 17, 0, 40).astype(int)
     driver_experience = np.array([
         rng.integers(0, max(1, m + 1)) for m in max_exp
     ])
 
-    # NCD years: inversely correlated with age (older drivers have more NCD)
-    # UK scale: 0-5, with 5+ treated as max
-    # Young drivers mostly 0-2, experienced drivers 3-5
+    # NCD years: inversely correlated with age
     ncd_max = np.clip(driver_experience // 2, 0, 5).astype(int)
     ncd_years = np.array([
         rng.integers(0, max(1, m + 1)) for m in ncd_max
@@ -158,7 +159,7 @@ def _generate_policies(n: int, rng: np.random.Generator) -> pd.DataFrame:
     has_convictions = rng.random(n) < conviction_probs
     conviction_points = np.where(
         has_convictions,
-        rng.choice([3, 3, 3, 6, 6, 9], size=n),  # SP30 most common
+        rng.choice([3, 3, 3, 6, 6, 9], size=n),
         0
     )
 
@@ -183,7 +184,7 @@ def _generate_policies(n: int, rng: np.random.Generator) -> pd.DataFrame:
     # Area: A-F with realistic distribution
     area = rng.choice(AREA_BANDS, size=n, p=AREA_PROBS)
 
-    # Occupation class: 1-5 (1=low risk professional, 5=high risk)
+    # Occupation class: 1-5
     occupation_class = rng.choice(
         [1, 2, 3, 4, 5],
         size=n,
@@ -191,11 +192,10 @@ def _generate_policies(n: int, rng: np.random.Generator) -> pd.DataFrame:
     )
 
     # Policy type: Comp vs TPFT
-    # Younger/lower-value cars more likely TPFT
     tpft_prob = np.where(driver_ages < 25, 0.35, 0.15)
     policy_type = np.where(rng.random(n) < tpft_prob, "TPFT", "Comp")
 
-    df = pd.DataFrame({
+    return {
         "inception_date": inception_dates,
         "expiry_date": expiry_dates,
         "vehicle_age": vehicle_age,
@@ -206,62 +206,53 @@ def _generate_policies(n: int, rng: np.random.Generator) -> pd.DataFrame:
         "ncd_protected": ncd_protected,
         "conviction_points": conviction_points,
         "annual_mileage": annual_mileage,
-        "area": area,
+        "area": area.tolist(),
         "occupation_class": occupation_class,
-        "policy_type": policy_type,
-    })
-
-    return df
+        "policy_type": policy_type.tolist(),
+    }
 
 
-def _calculate_earned_exposure(df: pd.DataFrame) -> pd.Series:
+def _calculate_earned_exposure(inception_dates: list, expiry_dates: list) -> np.ndarray:
     """
     Calculate earned exposure in years for each policy row.
-
-    Simple single-year version used internally during dataset generation.
-    The full multi-year splitting is handled by external tooling.
     """
-    days = (
-        pd.to_datetime(df["expiry_date"]) - pd.to_datetime(df["inception_date"])
-    ).dt.days
-    return (days / 365.25).clip(lower=0.0)
+    days = np.array([
+        (exp - inc).days for inc, exp in zip(inception_dates, expiry_dates)
+    ], dtype=float)
+    return np.clip(days / 365.25, 0.0, None)
 
 
 def _generate_claims(
-    df: pd.DataFrame, rng: np.random.Generator
-) -> tuple[pd.Series, pd.Series]:
+    data: dict,
+    exposure: np.ndarray,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Generate claim counts and incurred amounts from the true DGP.
-
-    Frequency: Poisson with log-linear predictor (see TRUE_FREQ_PARAMS).
-    Severity: Gamma with log-linear predictor (see TRUE_SEV_PARAMS), conditional
-    on at least one claim.
-
-    Returns
-    -------
-    claim_count : pd.Series of int
-    incurred : pd.Series of float (0.0 where claim_count == 0)
     """
-    n = len(df)
+    n = len(exposure)
+
+    vehicle_group = np.asarray(data["vehicle_group"])
+    driver_ages = np.asarray(data["driver_age"])
+    ncd_years = np.asarray(data["ncd_years"])
+    conviction_points = np.asarray(data["conviction_points"])
+    area = np.asarray(data["area"])
 
     # --- Frequency predictor ---
     log_lambda = (
         TRUE_FREQ_PARAMS["intercept"]
-        + TRUE_FREQ_PARAMS["vehicle_group"] * df["vehicle_group"].values
-        + _driver_age_effect(df["driver_age"].values)
-        + TRUE_FREQ_PARAMS["ncd_years"] * df["ncd_years"].values
-        + TRUE_FREQ_PARAMS["has_convictions"] * (df["conviction_points"].values > 0).astype(float)
+        + TRUE_FREQ_PARAMS["vehicle_group"] * vehicle_group
+        + _driver_age_effect(driver_ages)
+        + TRUE_FREQ_PARAMS["ncd_years"] * ncd_years
+        + TRUE_FREQ_PARAMS["has_convictions"] * (conviction_points > 0).astype(float)
     )
 
     # Area effect
     area_effect = np.zeros(n)
     for band, key in [("B", "area_B"), ("C", "area_C"), ("D", "area_D"),
                       ("E", "area_E"), ("F", "area_F")]:
-        area_effect[df["area"].values == band] = TRUE_FREQ_PARAMS[key]
+        area_effect[area == band] = TRUE_FREQ_PARAMS[key]
     log_lambda += area_effect
-
-    # Exposure offset: policies with less than a full year have lower claim count
-    exposure = df["exposure"].values
     log_lambda += np.log(np.clip(exposure, 1e-6, None))
 
     # Poisson claim counts
@@ -271,24 +262,18 @@ def _generate_claims(
     # --- Severity predictor ---
     log_mu = (
         TRUE_SEV_PARAMS["intercept"]
-        + TRUE_SEV_PARAMS["vehicle_group"] * df["vehicle_group"].values
-        + TRUE_SEV_PARAMS["driver_age_young"] * (df["driver_age"].values < 25).astype(float)
+        + TRUE_SEV_PARAMS["vehicle_group"] * vehicle_group
+        + TRUE_SEV_PARAMS["driver_age_young"] * (driver_ages < 25).astype(float)
     )
 
-    # Gamma severity: shape parameter (dispersion ~0.5, shape ~2)
-    # Gamma mean = exp(log_mu), shape = 2 → CV ≈ 0.71
     gamma_shape = 2.0
     gamma_mean = np.exp(log_mu)
     gamma_scale = gamma_mean / gamma_shape
 
-    # Only generate severity where there are claims
     has_claims = claim_count > 0
     incurred = np.zeros(n)
 
     if has_claims.any():
-        # For policies with multiple claims, sum of Gamma(shape, scale) per claim
-        # = Gamma(count * shape, scale) when independent and same parameters
-        # We simulate per-claim for accuracy
         for i in np.where(has_claims)[0]:
             per_claim = rng.gamma(
                 shape=gamma_shape,
@@ -297,13 +282,13 @@ def _generate_claims(
             )
             incurred[i] = per_claim.sum()
 
-    return pd.Series(claim_count, dtype=int), pd.Series(incurred, dtype=float)
+    return claim_count, incurred
 
 
 def load_motor(
     n_policies: int = 50_000,
     seed: int = 42,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """
     Load a synthetic UK motor insurance dataset.
 
@@ -323,27 +308,27 @@ def load_motor(
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         One row per policy with columns:
 
-        - ``policy_id`` : int — sequential identifier
-        - ``inception_date`` : date — policy start
-        - ``expiry_date`` : date — policy end (may be < 12 months for cancellations)
-        - ``accident_year`` : int — year of inception (used for cohort splits)
-        - ``vehicle_age`` : int — 0-20 years
-        - ``vehicle_group`` : int — ABI group 1-50
-        - ``driver_age`` : int — 17-85
-        - ``driver_experience`` : int — years licensed
-        - ``ncd_years`` : int — 0-5 (UK NCD scale)
-        - ``ncd_protected`` : bool
-        - ``conviction_points`` : int — total endorsement points
-        - ``annual_mileage`` : int — 2,000-30,000 miles
-        - ``area`` : str — ABI area band A-F
-        - ``occupation_class`` : int — 1-5
-        - ``policy_type`` : str — 'Comp' or 'TPFT'
-        - ``claim_count`` : int — number of claims in period
-        - ``incurred`` : float — total incurred cost (0.0 if no claims)
-        - ``exposure`` : float — earned years (< 1.0 for cancellations/short periods)
+        - ``policy_id`` : Int64 — sequential identifier
+        - ``inception_date`` : Date — policy start
+        - ``expiry_date`` : Date — policy end (may be < 12 months for cancellations)
+        - ``accident_year`` : Int64 — year of inception (used for cohort splits)
+        - ``vehicle_age`` : Int64 — 0-20 years
+        - ``vehicle_group`` : Int64 — ABI group 1-50
+        - ``driver_age`` : Int64 — 17-85
+        - ``driver_experience`` : Int64 — years licensed
+        - ``ncd_years`` : Int64 — 0-5 (UK NCD scale)
+        - ``ncd_protected`` : Boolean
+        - ``conviction_points`` : Int64 — total endorsement points
+        - ``annual_mileage`` : Int64 — 2,000-30,000 miles
+        - ``area`` : Utf8 — ABI area band A-F
+        - ``occupation_class`` : Int64 — 1-5
+        - ``policy_type`` : Utf8 — 'Comp' or 'TPFT'
+        - ``claim_count`` : Int64 — number of claims in period
+        - ``incurred`` : Float64 — total incurred cost (0.0 if no claims)
+        - ``exposure`` : Float64 — earned years (< 1.0 for cancellations)
 
     Examples
     --------
@@ -352,69 +337,51 @@ def load_motor(
     10000
     >>> df["claim_count"].mean()  # roughly 6-8% claim rate
     # ~0.07
-
-    Notes
-    -----
-    The data generating process is documented in ``TRUE_FREQ_PARAMS`` and
-    ``TRUE_SEV_PARAMS``. Policies span accident years 2019-2023. Exposure varies:
-    cancellations and mid-term inceptions create sub-annual exposures.
-
-    There are no missing values. Real data always has missing values; use this
-    dataset for algorithm testing, not for missing-data workflows.
     """
     rng = np.random.default_rng(seed)
 
-    df = _generate_policies(n_policies, rng)
+    policy_data = _generate_policies(n_policies, rng)
 
-    # Exposure must be calculated before claim generation (frequency uses it)
-    df["exposure"] = _calculate_earned_exposure(df)
+    inception_dates = policy_data["inception_date"]
+    expiry_dates = policy_data["expiry_date"]
+    exposure = _calculate_earned_exposure(inception_dates, expiry_dates)
 
-    # Accident year is the inception year for this dataset
-    df["accident_year"] = pd.to_datetime(df["inception_date"]).dt.year
+    accident_year = np.array([d.year for d in inception_dates], dtype=int)
 
-    # Generate claims from the true DGP
-    df["claim_count"], df["incurred"] = _generate_claims(df, rng)
+    claim_count, incurred = _generate_claims(policy_data, exposure, rng)
 
-    # Add policy_id and reorder columns to match the schema
-    df.insert(0, "policy_id", np.arange(1, n_policies + 1))
+    df = pl.DataFrame({
+        "policy_id": np.arange(1, n_policies + 1, dtype=int),
+        "inception_date": inception_dates,
+        "expiry_date": expiry_dates,
+        "accident_year": accident_year,
+        "vehicle_age": policy_data["vehicle_age"].astype(int),
+        "vehicle_group": policy_data["vehicle_group"].astype(int),
+        "driver_age": policy_data["driver_age"].astype(int),
+        "driver_experience": policy_data["driver_experience"].astype(int),
+        "ncd_years": policy_data["ncd_years"].astype(int),
+        "ncd_protected": policy_data["ncd_protected"],
+        "conviction_points": policy_data["conviction_points"].astype(int),
+        "annual_mileage": policy_data["annual_mileage"].astype(int),
+        "area": policy_data["area"],
+        "occupation_class": policy_data["occupation_class"].astype(int),
+        "policy_type": policy_data["policy_type"],
+        "claim_count": claim_count.astype(int),
+        "incurred": incurred.astype(float),
+        "exposure": exposure.astype(float),
+    })
+
+    # Polars infers date columns from Python date objects; cast to Date type
+    df = df.with_columns([
+        pl.col("inception_date").cast(pl.Date),
+        pl.col("expiry_date").cast(pl.Date),
+    ])
 
     column_order = [
-        "policy_id",
-        "inception_date",
-        "expiry_date",
-        "accident_year",
-        "vehicle_age",
-        "vehicle_group",
-        "driver_age",
-        "driver_experience",
-        "ncd_years",
-        "ncd_protected",
-        "conviction_points",
-        "annual_mileage",
-        "area",
-        "occupation_class",
-        "policy_type",
-        "claim_count",
-        "incurred",
+        "policy_id", "inception_date", "expiry_date", "accident_year",
+        "vehicle_age", "vehicle_group", "driver_age", "driver_experience",
+        "ncd_years", "ncd_protected", "conviction_points", "annual_mileage",
+        "area", "occupation_class", "policy_type", "claim_count", "incurred",
         "exposure",
     ]
-    df = df[column_order].copy()
-
-    # Enforce dtypes
-    df["policy_id"] = df["policy_id"].astype(int)
-    df["inception_date"] = pd.to_datetime(df["inception_date"]).dt.date
-    df["expiry_date"] = pd.to_datetime(df["expiry_date"]).dt.date
-    df["accident_year"] = df["accident_year"].astype(int)
-    df["vehicle_age"] = df["vehicle_age"].astype(int)
-    df["vehicle_group"] = df["vehicle_group"].astype(int)
-    df["driver_age"] = df["driver_age"].astype(int)
-    df["driver_experience"] = df["driver_experience"].astype(int)
-    df["ncd_years"] = df["ncd_years"].astype(int)
-    df["ncd_protected"] = df["ncd_protected"].astype(bool)
-    df["conviction_points"] = df["conviction_points"].astype(int)
-    df["annual_mileage"] = df["annual_mileage"].astype(int)
-    df["claim_count"] = df["claim_count"].astype(int)
-    df["incurred"] = df["incurred"].astype(float)
-    df["exposure"] = df["exposure"].astype(float)
-
-    return df.reset_index(drop=True)
+    return df.select(column_order)

@@ -3,6 +3,8 @@ Shared test fixtures for shap-relativities.
 
 Includes a minimal synthetic motor data generator with known DGP parameters,
 so the test suite is fully self-contained and doesn't depend on external packages.
+
+All fixtures return Polars DataFrames.
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import numpy as np
-import pandas as pd
+import polars as pl
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -51,11 +53,12 @@ def _driver_age_effect(ages: np.ndarray) -> np.ndarray:
     return effect
 
 
-def generate_motor_data(n_policies: int = 10_000, seed: int = 42) -> pd.DataFrame:
+def generate_motor_data(n_policies: int = 10_000, seed: int = 42) -> pl.DataFrame:
     """
     Generate synthetic UK motor data with known DGP.
 
     Minimal version for testing — produces the columns needed by the test suite.
+    Returns a Polars DataFrame.
     """
     rng = np.random.default_rng(seed)
 
@@ -128,13 +131,13 @@ def generate_motor_data(n_policies: int = 10_000, seed: int = 42) -> pd.DataFram
             per_claim = rng.gamma(shape=gamma_shape, scale=gamma_scale[i], size=int(claim_count[i]))
             incurred[i] = per_claim.sum()
 
-    return pd.DataFrame({
-        "vehicle_group": vehicle_group,
-        "driver_age": driver_ages,
-        "ncd_years": ncd_years,
-        "conviction_points": conviction_points,
-        "area": area,
+    return pl.DataFrame({
+        "vehicle_group": vehicle_group.astype(int),
+        "driver_age": driver_ages.astype(int),
+        "ncd_years": ncd_years.astype(int),
+        "conviction_points": conviction_points.astype(int),
+        "area": area.tolist(),
         "exposure": exposure,
-        "claim_count": claim_count,
+        "claim_count": claim_count.astype(int),
         "incurred": incurred,
     })

@@ -6,6 +6,10 @@ Both show 95% confidence intervals by default.
 
 Design choice: plots are deliberately plain — no corporate styling, no
 seaborn dependency. Callers can apply their own style sheets on top.
+
+Input is a Polars DataFrame from extract_relativities(). A thin conversion
+to numpy arrays is the only pandas dependency here, and it doesn't exist —
+Polars columns convert directly to numpy.
 """
 
 from __future__ import annotations
@@ -13,14 +17,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 if TYPE_CHECKING:
     import matplotlib.axes
 
 
 def plot_categorical(
-    data: pd.DataFrame,
+    data: pl.DataFrame,
     feature: str,
     ax: "matplotlib.axes.Axes",
     show_ci: bool = True,
@@ -31,7 +35,7 @@ def plot_categorical(
 
     Parameters
     ----------
-    data : pd.DataFrame
+    data : pl.DataFrame
         Rows for this feature from extract_relativities() output.
         Required columns: level, relativity, lower_ci, upper_ci.
     feature : str
@@ -43,13 +47,13 @@ def plot_categorical(
     colour : str
         Bar colour.
     """
-    levels = data["level"].astype(str).values
+    levels = data["level"].cast(pl.Utf8).to_numpy()
     x = np.arange(len(levels))
-    relativities = data["relativity"].values
+    relativities = data["relativity"].to_numpy()
 
     if show_ci and "lower_ci" in data.columns and "upper_ci" in data.columns:
-        lower_err = relativities - data["lower_ci"].values
-        upper_err = data["upper_ci"].values - relativities
+        lower_err = relativities - data["lower_ci"].to_numpy()
+        upper_err = data["upper_ci"].to_numpy() - relativities
         yerr = np.array([lower_err, upper_err])
     else:
         yerr = None
@@ -64,7 +68,7 @@ def plot_categorical(
 
 
 def plot_continuous(
-    data: pd.DataFrame,
+    data: pl.DataFrame,
     feature: str,
     ax: "matplotlib.axes.Axes",
     show_ci: bool = True,
@@ -75,7 +79,7 @@ def plot_continuous(
 
     Parameters
     ----------
-    data : pd.DataFrame
+    data : pl.DataFrame
         Rows for this feature from extract_relativities() output.
         Required columns: level (numeric), relativity, lower_ci, upper_ci.
     feature : str
@@ -87,9 +91,9 @@ def plot_continuous(
     colour : str
         Line colour.
     """
-    data_sorted = data.sort_values("level")
-    x = data_sorted["level"].values
-    y = data_sorted["relativity"].values
+    data_sorted = data.sort("level")
+    x = data_sorted["level"].to_numpy()
+    y = data_sorted["relativity"].to_numpy()
 
     ax.plot(x, y, colour=colour, linewidth=1.5)
     ax.axhline(1.0, colour="black", linewidth=0.8, linestyle="--", alpha=0.6)
@@ -97,8 +101,8 @@ def plot_continuous(
     if show_ci and "lower_ci" in data_sorted.columns and "upper_ci" in data_sorted.columns:
         ax.fill_between(
             x,
-            data_sorted["lower_ci"].values,
-            data_sorted["upper_ci"].values,
+            data_sorted["lower_ci"].to_numpy(),
+            data_sorted["upper_ci"].to_numpy(),
             alpha=0.2,
             colour=colour,
         )
@@ -109,7 +113,7 @@ def plot_continuous(
 
 
 def plot_relativities(
-    relativities_df: pd.DataFrame,
+    relativities_df: pl.DataFrame,
     categorical_features: list[str],
     continuous_features: list[str],
     features: list[str] | None = None,
@@ -124,7 +128,7 @@ def plot_relativities(
 
     Parameters
     ----------
-    relativities_df : pd.DataFrame
+    relativities_df : pl.DataFrame
         Output from SHAPRelativities.extract_relativities().
     categorical_features : list[str]
         Feature names to treat as categorical (bar chart).
@@ -139,7 +143,7 @@ def plot_relativities(
     """
     import matplotlib.pyplot as plt
 
-    all_features = features or relativities_df["feature"].unique().tolist()
+    all_features = features or relativities_df["feature"].unique().to_list()
     n = len(all_features)
     n_cols = min(3, n)
     n_rows = (n + n_cols - 1) // n_cols
@@ -149,7 +153,7 @@ def plot_relativities(
 
     for i, feat in enumerate(all_features):
         ax = axes_flat[i]
-        feat_data = relativities_df[relativities_df["feature"] == feat].copy()
+        feat_data = relativities_df.filter(pl.col("feature") == feat)
 
         if feat in categorical_features:
             plot_categorical(feat_data, feat, ax, show_ci=show_ci)

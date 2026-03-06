@@ -4,12 +4,15 @@ Aggregation of SHAP values by feature level.
 Categorical features are grouped by level and exposure-weighted statistics
 are computed. Continuous features are returned as per-observation points
 suitable for smoothing downstream.
+
+All output is Polars DataFrames. The caller (SHAPRelativities) converts
+the combined result to pandas only if a downstream library requires it.
 """
 
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 
 def aggregate_categorical(
@@ -17,7 +20,7 @@ def aggregate_categorical(
     feature_values: np.ndarray,
     shap_col: np.ndarray,
     weights: np.ndarray,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """
     Aggregate SHAP values by categorical level using exposure weights.
 
@@ -39,31 +42,47 @@ def aggregate_categorical(
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         Columns: feature, level, mean_shap, shap_std, n_obs, exposure_weight.
         One row per unique level.
     """
-    df = pd.DataFrame({
-        "level": feature_values,
-        "shap": shap_col,
-        "w": weights,
+    # Build a Polars frame for groupby. Store levels as strings internally
+    # so that mixed-type levels (int codes, string labels) concatenate cleanly.
+    df = pl.DataFrame({
+        "level": feature_values.astype(str),
+        "shap": shap_col.astype(float),
+        "w": weights.astype(float),
     })
 
-    def _stats(g: pd.DataFrame) -> pd.Series:
-        w = g["w"].values
-        s = g["shap"].values
-        w_mean = np.average(s, weights=w)
-        w_var = np.average((s - w_mean) ** 2, weights=w)
-        return pd.Series({
-            "mean_shap": w_mean,
-            "shap_std": np.sqrt(w_var),
-            "n_obs": float(len(g)),
-            "exposure_weight": float(w.sum()),
-        })
+    # Weighted mean and weighted variance per level
+    agg = (
+        df.group_by("level")
+        .agg([
+            pl.len().alias("n_obs"),
+            pl.col("w").sum().alias("exposure_weight"),
+            # Weighted mean: sum(w * x) / sum(w)
+            (pl.col("w") * pl.col("shap")).sum().alias("_wsum"),
+            (pl.col("w")).sum().alias("_wtot"),
+            # Weighted sum of squares for variance: sum(w * x^2)
+            (pl.col("w") * pl.col("shap") ** 2).sum().alias("_wsq"),
+        ])
+        .with_columns([
+            (pl.col("_wsum") / pl.col("_wtot")).alias("mean_shap"),
+        ])
+        .with_columns([
+            # Weighted variance: E[x^2] - E[x]^2
+            (
+                (pl.col("_wsq") / pl.col("_wtot")) - pl.col("mean_shap") ** 2
+            ).clip(lower_bound=0.0).sqrt().alias("shap_std"),
+        ])
+        .drop(["_wsum", "_wtot", "_wsq"])
+        .sort("level")
+    )
 
-    result = df.groupby("level", sort=True).apply(_stats).reset_index()
-    result.insert(0, "feature", feature)
-    return result
+    result = agg.with_columns(pl.lit(feature).alias("feature"))
+
+    # Reorder columns
+    return result.select(["feature", "level", "mean_shap", "shap_std", "n_obs", "exposure_weight"])
 
 
 def aggregate_continuous(
@@ -71,7 +90,7 @@ def aggregate_continuous(
     feature_values: np.ndarray,
     shap_col: np.ndarray,
     weights: np.ndarray,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """
     Return per-observation SHAP values for a continuous feature.
 
@@ -92,15 +111,16 @@ def aggregate_continuous(
 
     Returns
     -------
-    pd.DataFrame
-        Columns: feature, level (numeric), mean_shap (= shap, no averaging),
-        n_obs (= 1), exposure_weight (= weight).
+    pl.DataFrame
+        Columns: feature, level (float), mean_shap, shap_std (zeros),
+        n_obs (ones), exposure_weight.
     """
-    return pd.DataFrame({
-        "feature": feature,
+    n = len(feature_values)
+    return pl.DataFrame({
+        "feature": [feature] * n,
         "level": feature_values.astype(float),
-        "mean_shap": shap_col,
-        "shap_std": np.zeros(len(shap_col)),
-        "n_obs": np.ones(len(shap_col)),
-        "exposure_weight": weights,
+        "mean_shap": shap_col.astype(float),
+        "shap_std": np.zeros(n),
+        "n_obs": np.ones(n),
+        "exposure_weight": weights.astype(float),
     })

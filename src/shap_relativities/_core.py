@@ -6,8 +6,11 @@ rating relativities. Output is directly comparable to GLM exp(beta) relativities
 a table of (feature, level, relativity) triples where the base level = 1.0 and
 relativities multiply together to give the model's expected prediction.
 
-Supports LightGBM and XGBoost models with log-link objectives (Poisson, Tweedie,
-Gamma). Will not work correctly with linear-link models.
+Supports CatBoost, LightGBM, and XGBoost models with log-link objectives
+(Poisson, Tweedie, Gamma). CatBoost is the default and recommended model —
+it handles categorical features natively without encoding, which removes a
+common source of information loss in insurance pricing models. Will not work
+correctly with linear-link models.
 
 Known limitations
 -----------------
@@ -19,6 +22,13 @@ Known limitations
 - TreeSHAP allocates interaction effects back to individual features by default.
   Use shap_interaction_values() if you need pure main effects, but be aware that
   this is O(n * p^2) and quickly becomes infeasible.
+
+Data handling
+-------------
+X may be a Polars DataFrame or a pandas DataFrame. Internally, all data
+operations use Polars. Conversion to pandas is done only when calling shap's
+TreeExplainer, which requires a pandas DataFrame for column names and dtype
+inference. The output of extract_relativities() is a Polars DataFrame.
 """
 
 from __future__ import annotations
@@ -27,7 +37,7 @@ import warnings
 from typing import Any
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 try:
     import shap
@@ -52,6 +62,28 @@ _RELATIVITY_COLUMNS = [
 ]
 
 
+def _to_polars(X: Any) -> pl.DataFrame:
+    """Convert X to a Polars DataFrame regardless of input type."""
+    try:
+        import pandas as pd
+        if isinstance(X, pd.DataFrame):
+            return pl.from_pandas(X)
+    except ImportError:
+        pass
+    if isinstance(X, pl.DataFrame):
+        return X
+    raise TypeError(
+        f"X must be a Polars or pandas DataFrame, got {type(X).__name__}. "
+        "Install polars or pandas as appropriate."
+    )
+
+
+def _to_pandas(X: pl.DataFrame):
+    """Convert a Polars DataFrame to pandas for shap/catboost bridging."""
+    import pandas as pd  # noqa: F401 — required for SHAP
+    return X.to_pandas()
+
+
 class SHAPRelativities:
     """
     Extract multiplicative rating relativities from a tree model via SHAP.
@@ -59,8 +91,8 @@ class SHAPRelativities:
     Workflow::
 
         sr = SHAPRelativities(
-            model=lgb_model,
-            X=X_train,
+            model=catboost_model,
+            X=df.select(["area", "ncd_years", "has_convictions"]),
             exposure=df["exposure"],
             categorical_features=["area", "ncd_years"],
         )
@@ -73,12 +105,14 @@ class SHAPRelativities:
     Parameters
     ----------
     model
-        A trained LightGBM Booster, LightGBM LGBMModel, or XGBoost Booster.
-        Must use a log-link objective (Poisson, Tweedie, Gamma).
-    X : pd.DataFrame
+        A trained CatBoost, LightGBM Booster, LightGBM LGBMModel, or XGBoost
+        Booster. Must use a log-link objective (Poisson, Tweedie, Gamma).
+        CatBoost is the recommended default — it handles categoricals natively.
+    X : pl.DataFrame | pd.DataFrame
         Feature matrix. Use training data for in-sample relativities, or a
-        representative holdout sample for out-of-sample.
-    exposure : pd.Series | None
+        representative holdout sample for out-of-sample. Polars DataFrames are
+        preferred; pandas DataFrames are accepted and converted internally.
+    exposure : pl.Series | pd.Series | np.ndarray | None
         Earned policy years (or other volume measure). Used as observation
         weights throughout. If None, all observations are weighted equally.
     categorical_features : list[str] | None
@@ -90,7 +124,7 @@ class SHAPRelativities:
     feature_perturbation : str
         "tree_path_dependent" (default, fast, no background data needed) or
         "interventional" (corrects for feature correlation, needs background_data).
-    background_data : pd.DataFrame | None
+    background_data : pl.DataFrame | pd.DataFrame | None
         Required only if feature_perturbation="interventional".
     n_background_samples : int
         Number of background samples for interventional SHAP. Default 1000.
@@ -102,11 +136,11 @@ class SHAPRelativities:
     def __init__(
         self,
         model: Any,
-        X: pd.DataFrame,
-        exposure: pd.Series | None = None,
+        X: Any,
+        exposure: Any = None,
         categorical_features: list[str] | None = None,
         continuous_features: list[str] | None = None,
-        background_data: pd.DataFrame | None = None,
+        background_data: Any = None,
         feature_perturbation: str = "tree_path_dependent",
         n_background_samples: int = 1000,
         annualise_exposure: bool = True,
@@ -118,10 +152,23 @@ class SHAPRelativities:
             )
 
         self._model = model
-        self._X = X.copy()
-        self._exposure = exposure.values if exposure is not None else None
+        self._X: pl.DataFrame = _to_polars(X)
+        self._background_data = (
+            _to_polars(background_data) if background_data is not None else None
+        )
+
+        # Normalise exposure to a numpy array
+        if exposure is None:
+            self._exposure: np.ndarray | None = None
+        elif isinstance(exposure, np.ndarray):
+            self._exposure = exposure
+        elif isinstance(exposure, pl.Series):
+            self._exposure = exposure.to_numpy()
+        else:
+            # pd.Series or similar
+            self._exposure = np.asarray(exposure)
+
         self._feature_perturbation = feature_perturbation
-        self._background_data = background_data
         self._n_background_samples = n_background_samples
         self._annualise_exposure = annualise_exposure
 
@@ -135,15 +182,25 @@ class SHAPRelativities:
         self._is_fitted: bool = False
 
     def _infer_categorical(self) -> list[str]:
+        numeric_types = (
+            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
+            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
+            pl.Float32, pl.Float64,
+        )
         return [
             c for c in self._X.columns
-            if not pd.api.types.is_numeric_dtype(self._X[c])
+            if not isinstance(self._X[c].dtype, numeric_types)
         ]
 
     def _infer_continuous(self) -> list[str]:
+        numeric_types = (
+            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
+            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
+            pl.Float32, pl.Float64,
+        )
         return [
             c for c in self._X.columns
-            if pd.api.types.is_numeric_dtype(self._X[c])
+            if isinstance(self._X[c].dtype, numeric_types)
             and c not in (self._categorical_features or [])
         ]
 
@@ -154,18 +211,25 @@ class SHAPRelativities:
         Must be called before extract_relativities(). Calling fit() again
         recomputes SHAP values (e.g. after changing X or the background data).
 
+        The feature matrix is converted to pandas internally for shap's
+        TreeExplainer. The conversion is a necessary bridge — shap requires
+        pandas for column name handling.
+
         Returns
         -------
         SHAPRelativities
             Self, for method chaining.
         """
+        # Convert to pandas for shap — unavoidable bridge
+        X_pd = _to_pandas(self._X)
+
         bg_data = None
         if self._feature_perturbation == "interventional":
             if self._background_data is not None:
-                bg_data = self._background_data
+                bg_data = _to_pandas(self._background_data)
             else:
-                n_bg = min(self._n_background_samples, len(self._X))
-                bg_data = shap.sample(self._X, n_bg)
+                n_bg = min(self._n_background_samples, len(X_pd))
+                bg_data = shap.sample(X_pd, n_bg)
 
         explainer = shap.TreeExplainer(
             self._model,
@@ -174,7 +238,7 @@ class SHAPRelativities:
             model_output="raw",
         )
 
-        raw = explainer.shap_values(self._X)
+        raw = explainer.shap_values(X_pd)
 
         # LightGBM with multiple outputs returns a list
         if isinstance(raw, list):
@@ -238,7 +302,7 @@ class SHAPRelativities:
         ci_method: str = "clt",
         n_bootstrap: int = 200,
         ci_level: float = 0.95,
-    ) -> pd.DataFrame:
+    ) -> pl.DataFrame:
         """
         Extract multiplicative relativities from SHAP values.
 
@@ -261,7 +325,7 @@ class SHAPRelativities:
 
         Returns
         -------
-        pd.DataFrame
+        pl.DataFrame
             Columns: feature, level, relativity, lower_ci, upper_ci,
             mean_shap, shap_std, n_obs, exposure_weight.
             One row per (feature, level) combination.
@@ -279,13 +343,13 @@ class SHAPRelativities:
             else np.ones(len(self._X))
         )
 
-        feature_names = list(self._X.columns)
+        feature_names = self._X.columns
         shap_vals = self._shap_values  # type: ignore[assignment]
 
-        parts: list[pd.DataFrame] = []
+        parts: list[pl.DataFrame] = []
 
         for i, feat in enumerate(feature_names):
-            feat_vals = self._X[feat].values
+            feat_vals = self._X[feat].to_numpy()
             shap_col = shap_vals[:, i]
 
             is_categorical = feat in self._categorical_features
@@ -296,9 +360,11 @@ class SHAPRelativities:
                 agg = aggregate_continuous(feat, feat_vals, shap_col, weights)
 
             if ci_method == "none":
-                agg["lower_ci"] = np.nan
-                agg["upper_ci"] = np.nan
-                agg["relativity"] = np.nan  # filled below
+                agg = agg.with_columns([
+                    pl.lit(float("nan")).alias("lower_ci"),
+                    pl.lit(float("nan")).alias("upper_ci"),
+                    pl.lit(float("nan")).alias("relativity"),
+                ])
 
             # Normalisation
             if normalise_to == "base_level" and is_categorical:
@@ -306,7 +372,7 @@ class SHAPRelativities:
                 if base is None:
                     # Fall back to the level with the smallest mean_shap as
                     # a sensible default (closest to intercept)
-                    base = agg.loc[agg["mean_shap"].idxmin(), "level"]
+                    base = agg.sort("mean_shap")["level"][0]
                     warnings.warn(
                         f"No base level specified for '{feat}'. "
                         f"Using '{base}' (lowest mean SHAP) as base.",
@@ -315,9 +381,12 @@ class SHAPRelativities:
                     )
 
                 if ci_method == "none":
-                    base_mask = agg["level"].astype(str) == str(base)
-                    base_shap = agg.loc[base_mask, "mean_shap"].values[0]
-                    agg["relativity"] = np.exp(agg["mean_shap"] - base_shap)
+                    base_key = str(base)
+                    base_rows = agg.filter(pl.col("level") == base_key)
+                    base_shap = base_rows["mean_shap"][0]
+                    agg = agg.with_columns(
+                        (pl.col("mean_shap") - base_shap).exp().alias("relativity")
+                    )
                 else:
                     agg = normalise_base_level(agg, base, ci_level=ci_level)
 
@@ -325,33 +394,30 @@ class SHAPRelativities:
                 # Mean normalisation for continuous features, or when
                 # normalise_to="mean" for any feature
                 if ci_method == "none":
-                    portfolio_mean = np.average(
-                        agg["mean_shap"], weights=agg["exposure_weight"]
+                    total_weight = agg["exposure_weight"].sum()
+                    portfolio_mean = float(
+                        (agg["mean_shap"] * agg["exposure_weight"]).sum() / total_weight
+                    ) if total_weight > 0 else 0.0
+                    agg = agg.with_columns(
+                        (pl.col("mean_shap") - portfolio_mean).exp().alias("relativity")
                     )
-                    agg["relativity"] = np.exp(agg["mean_shap"] - portfolio_mean)
                 else:
                     agg = normalise_mean(agg, ci_level=ci_level)
 
-            # Cast categorical levels to object so pd.concat doesn't coerce
-            # int8/int64 levels to float64 when mixed with float continuous levels.
-            if is_categorical:
-                agg = agg.copy()
-                agg["level"] = agg["level"].astype(object)
-
             parts.append(agg)
 
-        result = pd.concat(parts, ignore_index=True)
+        result = pl.concat(parts, how="diagonal")
 
         # Ensure standard column order
         available = [c for c in _RELATIVITY_COLUMNS if c in result.columns]
-        return result[available]
+        return result.select(available)
 
     def extract_continuous_curve(
         self,
         feature: str,
         n_points: int = 100,
         smooth_method: str = "loess",
-    ) -> pd.DataFrame:
+    ) -> pl.DataFrame:
         """
         Smoothed relativity curve for a continuous feature.
 
@@ -368,7 +434,7 @@ class SHAPRelativities:
 
         Returns
         -------
-        pd.DataFrame
+        pl.DataFrame
             Columns: feature_value, relativity, lower_ci, upper_ci.
         """
         self._check_fitted()
@@ -376,8 +442,8 @@ class SHAPRelativities:
         if feature not in self._X.columns:
             raise ValueError(f"Feature '{feature}' not in X.")
 
-        feat_idx = list(self._X.columns).index(feature)
-        feat_vals = self._X[feature].values.astype(float)
+        feat_idx = self._X.columns.index(feature)
+        feat_vals = self._X[feature].to_numpy().astype(float)
         shap_col = self._shap_values[:, feat_idx]  # type: ignore[index]
         weights = (
             self._exposure if self._exposure is not None
@@ -391,11 +457,11 @@ class SHAPRelativities:
 
         if smooth_method == "none":
             order = np.argsort(feat_vals)
-            return pd.DataFrame({
+            return pl.DataFrame({
                 "feature_value": feat_vals[order],
                 "relativity": relativities[order],
-                "lower_ci": np.nan,
-                "upper_ci": np.nan,
+                "lower_ci": np.full(len(feat_vals), float("nan")),
+                "upper_ci": np.full(len(feat_vals), float("nan")),
             })
 
         elif smooth_method == "isotonic":
@@ -404,11 +470,11 @@ class SHAPRelativities:
             ir.fit(feat_vals, shap_col, sample_weight=weights)
             smoothed_shap = ir.predict(grid)
             smoothed_rel = np.exp(smoothed_shap - portfolio_mean)
-            return pd.DataFrame({
+            return pl.DataFrame({
                 "feature_value": grid,
                 "relativity": smoothed_rel,
-                "lower_ci": np.nan,
-                "upper_ci": np.nan,
+                "lower_ci": np.full(n_points, float("nan")),
+                "upper_ci": np.full(n_points, float("nan")),
             })
 
         elif smooth_method == "loess":
@@ -419,11 +485,11 @@ class SHAPRelativities:
                     xvals=grid, is_sorted=False,
                 )
                 smoothed_rel = np.exp(smoothed - portfolio_mean)
-                return pd.DataFrame({
+                return pl.DataFrame({
                     "feature_value": grid,
                     "relativity": smoothed_rel,
-                    "lower_ci": np.nan,
-                    "upper_ci": np.nan,
+                    "lower_ci": np.full(n_points, float("nan")),
+                    "upper_ci": np.full(n_points, float("nan")),
                 })
             except ImportError:
                 warnings.warn(
@@ -465,14 +531,14 @@ class SHAPRelativities:
         """
         self._check_fitted()
 
+        X_pd = _to_pandas(self._X)
+
         # Get model predictions for reconstruction check
         try:
-            # LightGBM Booster API
-            preds = self._model.predict(self._X)
+            preds = self._model.predict(X_pd)
         except TypeError:
             try:
-                # LightGBM sklearn API
-                preds = self._model.predict(self._X)
+                preds = self._model.predict(X_pd)
             except Exception:
                 preds = None
 
@@ -492,7 +558,7 @@ class SHAPRelativities:
                 message="Could not obtain model predictions for reconstruction check.",
             )
 
-        feature_names = list(self._X.columns)
+        feature_names = self._X.columns
         results["feature_coverage"] = check_feature_coverage(
             feature_names, feature_names
         )
@@ -503,21 +569,21 @@ class SHAPRelativities:
             else np.ones(len(self._X))
         )
 
-        sparse_parts: list[pd.DataFrame] = []
+        sparse_parts: list[pl.DataFrame] = []
         for feat in self._categorical_features:
             if feat not in self._X.columns:
                 continue
-            feat_idx = list(self._X.columns).index(feat)
+            feat_idx = self._X.columns.index(feat)
             agg = aggregate_categorical(
                 feat,
-                self._X[feat].values,
+                self._X[feat].to_numpy(),
                 self._shap_values[:, feat_idx],  # type: ignore[index]
                 weights,
             )
             sparse_parts.append(agg)
 
         if sparse_parts:
-            all_agg = pd.concat(sparse_parts, ignore_index=True)
+            all_agg = pl.concat(sparse_parts, how="diagonal")
             results["sparse_levels"] = check_sparse_levels(all_agg)
         else:
             results["sparse_levels"] = CheckResult(
@@ -574,10 +640,10 @@ class SHAPRelativities:
         return {
             "shap_values": self._shap_values.tolist(),  # type: ignore[union-attr]
             "expected_value": self._expected_value,
-            "feature_names": list(self._X.columns),
+            "feature_names": self._X.columns,
             "categorical_features": self._categorical_features,
             "continuous_features": self._continuous_features,
-            "X_values": self._X.to_dict(orient="list"),
+            "X_values": {c: self._X[c].to_list() for c in self._X.columns},
             "exposure": (
                 self._exposure.tolist()
                 if self._exposure is not None else None
@@ -602,9 +668,9 @@ class SHAPRelativities:
         -------
         SHAPRelativities
         """
-        X = pd.DataFrame(data["X_values"])
+        X = pl.DataFrame(data["X_values"])
         exposure = (
-            pd.Series(data["exposure"]) if data.get("exposure") is not None
+            np.array(data["exposure"]) if data.get("exposure") is not None
             else None
         )
 
@@ -612,7 +678,7 @@ class SHAPRelativities:
         instance = cls.__new__(cls)
         instance._model = None
         instance._X = X
-        instance._exposure = exposure.values if exposure is not None else None
+        instance._exposure = exposure
         instance._categorical_features = data.get("categorical_features", [])
         instance._continuous_features = data.get("continuous_features", [])
         instance._feature_perturbation = "tree_path_dependent"

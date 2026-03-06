@@ -9,6 +9,8 @@ Design rationale
 ----------------
 Validation is separate from computation so that the main fit() path stays
 clean and fast. Validation can be expensive (e.g. predict call) and is opt-in.
+
+All functions accept Polars DataFrames where a DataFrame is required.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 
 class CheckResult(NamedTuple):
@@ -95,7 +97,7 @@ def check_feature_coverage(
 
 
 def check_sparse_levels(
-    aggregated: pd.DataFrame,
+    aggregated: pl.DataFrame,
     min_obs: int = 30,
 ) -> CheckResult:
     """
@@ -107,7 +109,7 @@ def check_sparse_levels(
 
     Parameters
     ----------
-    aggregated : pd.DataFrame
+    aggregated : pl.DataFrame
         Output from aggregate_categorical, with n_obs column.
     min_obs : int
         Minimum observation count per level. Default 30 (CLT rule of thumb).
@@ -119,11 +121,11 @@ def check_sparse_levels(
     if "n_obs" not in aggregated.columns:
         return CheckResult(passed=True, value=0.0, message="No n_obs column to check.")
 
-    sparse = aggregated[aggregated["n_obs"] < min_obs]
+    sparse = aggregated.filter(pl.col("n_obs") < min_obs)
     n_sparse = len(sparse)
     passed = n_sparse == 0
     if not passed:
-        levels = sparse["level"].tolist() if "level" in sparse.columns else "unknown"
+        levels = sparse["level"].to_list() if "level" in sparse.columns else "unknown"
         msg = (
             f"{n_sparse} factor level(s) have fewer than {min_obs} observations. "
             f"CLT CIs will be unreliable. Levels: {levels}"

@@ -17,28 +17,31 @@ CLT confidence intervals
     These quantify data uncertainty only — they do not reflect model uncertainty
     from the GBM fitting process. Use bootstrap CIs across model refits for
     full uncertainty, but that is expensive.
+
+All functions operate on Polars DataFrames and return Polars DataFrames.
 """
 
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
+import polars as pl
 import scipy.stats
 
 
 def normalise_base_level(
-    result: pd.DataFrame,
+    result: pl.DataFrame,
     base_level: str | float | int,
     ci_level: float = 0.95,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """
     Normalise so the base level receives relativity = 1.0.
 
     Parameters
     ----------
-    result : pd.DataFrame
+    result : pl.DataFrame
         Output from aggregate_categorical or aggregate_continuous.
         Must have columns: mean_shap, shap_std, n_obs, exposure_weight, level.
+        The level column contains string values (as produced by aggregate_categorical).
     base_level : str | float | int
         The level value to use as the reference (relativity = 1.0).
     ci_level : float
@@ -46,7 +49,7 @@ def normalise_base_level(
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         Input with added columns: relativity, lower_ci, upper_ci.
 
     Raises
@@ -54,55 +57,73 @@ def normalise_base_level(
     ValueError
         If base_level is not found in the result's level column.
     """
-    result = result.copy()
-
-    base_mask = result["level"].astype(str) == str(base_level)
-    if not base_mask.any():
+    base_key = str(base_level)
+    base_rows = result.filter(pl.col("level") == base_key)
+    if len(base_rows) == 0:
+        levels = result["level"].to_list()
         raise ValueError(
-            f"Base level '{base_level}' not found in levels: "
-            f"{result['level'].tolist()}"
+            f"Base level '{base_level}' not found in levels: {levels}"
         )
 
-    base_shap = result.loc[base_mask, "mean_shap"].values[0]
-    result["relativity"] = np.exp(result["mean_shap"] - base_shap)
+    base_shap = base_rows["mean_shap"][0]
 
     z = scipy.stats.norm.ppf((1 + ci_level) / 2)
-    se = result["shap_std"] / np.sqrt(result["n_obs"].clip(lower=1))
-    result["lower_ci"] = np.exp(result["mean_shap"] - z * se - base_shap)
-    result["upper_ci"] = np.exp(result["mean_shap"] + z * se - base_shap)
+
+    result = result.with_columns([
+        (pl.col("mean_shap") - base_shap).exp().alias("relativity"),
+        (
+            (pl.col("mean_shap") - z * pl.col("shap_std") / pl.col("n_obs").clip(lower_bound=1).sqrt() - base_shap)
+            .exp()
+        ).alias("lower_ci"),
+        (
+            (pl.col("mean_shap") + z * pl.col("shap_std") / pl.col("n_obs").clip(lower_bound=1).sqrt() - base_shap)
+            .exp()
+        ).alias("upper_ci"),
+    ])
 
     return result
 
 
 def normalise_mean(
-    result: pd.DataFrame,
+    result: pl.DataFrame,
     ci_level: float = 0.95,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """
     Normalise so the exposure-weighted mean relativity = 1.0.
 
     Parameters
     ----------
-    result : pd.DataFrame
+    result : pl.DataFrame
         Output from aggregate_categorical or aggregate_continuous.
     ci_level : float
         Two-sided confidence level.
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         Input with added columns: relativity, lower_ci, upper_ci.
     """
-    result = result.copy()
-
-    portfolio_mean_shap = np.average(
-        result["mean_shap"], weights=result["exposure_weight"]
-    )
-    result["relativity"] = np.exp(result["mean_shap"] - portfolio_mean_shap)
+    # Exposure-weighted mean of mean_shap
+    total_weight = result["exposure_weight"].sum()
+    if total_weight == 0:
+        portfolio_mean_shap = 0.0
+    else:
+        portfolio_mean_shap = float(
+            (result["mean_shap"] * result["exposure_weight"]).sum() / total_weight
+        )
 
     z = scipy.stats.norm.ppf((1 + ci_level) / 2)
-    se = result["shap_std"] / np.sqrt(result["n_obs"].clip(lower=1))
-    result["lower_ci"] = np.exp(result["mean_shap"] - z * se - portfolio_mean_shap)
-    result["upper_ci"] = np.exp(result["mean_shap"] + z * se - portfolio_mean_shap)
+
+    result = result.with_columns([
+        (pl.col("mean_shap") - portfolio_mean_shap).exp().alias("relativity"),
+        (
+            (pl.col("mean_shap") - z * pl.col("shap_std") / pl.col("n_obs").clip(lower_bound=1).sqrt() - portfolio_mean_shap)
+            .exp()
+        ).alias("lower_ci"),
+        (
+            (pl.col("mean_shap") + z * pl.col("shap_std") / pl.col("n_obs").clip(lower_bound=1).sqrt() - portfolio_mean_shap)
+            .exp()
+        ).alias("upper_ci"),
+    ])
 
     return result
