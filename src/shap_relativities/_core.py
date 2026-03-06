@@ -148,7 +148,7 @@ class SHAPRelativities:
         if not _SHAP_AVAILABLE:
             raise ImportError(
                 "shap is required for SHAPRelativities. "
-                "Install it with: pip install 'shap-relativities[ml]'"
+                "Install it with: uv pip install 'shap-relativities[ml]'"
             )
 
         self._model = model
