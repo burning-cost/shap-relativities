@@ -21,22 +21,22 @@ So the GBM sits in a notebook. The GLM goes to production.
 ## Installation
 
 ```bash
-uv pip install "shap-relativities[all]"
+uv add "shap-relativities[all]"
 ```
 
 Or pick what you need:
 
 ```bash
-uv pip install "shap-relativities[ml]"    # shap + catboost + scikit-learn + pandas bridge
-uv pip install "shap-relativities[plot]"  # matplotlib for plots
-uv pip install shap-relativities          # core only (polars, numpy, scipy)
+uv add "shap-relativities[ml]"    # shap + catboost + scikit-learn + pandas bridge
+uv add "shap-relativities[plot]"  # matplotlib for plots
+uv add shap-relativities          # core only (polars, numpy, scipy)
 ```
 
 LightGBM and XGBoost are still supported but not installed by default:
 
 ```bash
-uv pip install "shap-relativities[lightgbm]"
-uv pip install "shap-relativities[xgboost]"
+uv add "shap-relativities[lightgbm]"
+uv add "shap-relativities[xgboost]"
 ```
 
 ---
