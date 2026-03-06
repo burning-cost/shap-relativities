@@ -1,5 +1,5 @@
 """
-SHAP Relativities — actuarial-grade multiplicative relativities from tree models.
+SHAP Relativities - actuarial-grade multiplicative relativities from tree models.
 
 Converts a trained GBM's SHAP values into the same format as GLM exp(beta)
 relativities: a table of (feature, level, relativity) triples where the base
@@ -48,7 +48,7 @@ def extract_relativities(
     Parameters
     ----------
     model
-        Trained LightGBM or XGBoost model with a log-link objective.
+        Trained CatBoost, LightGBM, or XGBoost model with a log-link objective. CatBoost is recommended.
     X : pd.DataFrame
         Feature matrix.
     exposure : pd.Series | None

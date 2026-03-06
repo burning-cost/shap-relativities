@@ -17,7 +17,7 @@ Known limitations
 - SHAP attribution for correlated features is not uniquely defined. Correlated
   features "borrow" attribution from each other. There is no fix; document this
   when presenting results.
-- CLT confidence intervals capture data uncertainty only — not model uncertainty
+- CLT confidence intervals capture data uncertainty only - not model uncertainty
   from the GBM fitting process.
 - TreeSHAP allocates interaction effects back to individual features by default.
   Use shap_interaction_values() if you need pure main effects, but be aware that
@@ -55,7 +55,7 @@ from ._validation import (
 )
 
 
-# Output column order — consistent with what pricing teams expect
+# Output column order - consistent with what pricing teams expect
 _RELATIVITY_COLUMNS = [
     "feature", "level", "relativity", "lower_ci", "upper_ci",
     "mean_shap", "shap_std", "n_obs", "exposure_weight",
@@ -80,7 +80,7 @@ def _to_polars(X: Any) -> pl.DataFrame:
 
 def _to_pandas(X: pl.DataFrame):
     """Convert a Polars DataFrame to pandas for shap/catboost bridging."""
-    import pandas as pd  # noqa: F401 — required for SHAP
+    import pandas as pd  # noqa: F401 - required for SHAP
     return X.to_pandas()
 
 
@@ -107,7 +107,7 @@ class SHAPRelativities:
     model
         A trained CatBoost, LightGBM Booster, LightGBM LGBMModel, or XGBoost
         Booster. Must use a log-link objective (Poisson, Tweedie, Gamma).
-        CatBoost is the recommended default — it handles categoricals natively.
+        CatBoost is the recommended default - it handles categoricals natively.
     X : pl.DataFrame | pd.DataFrame
         Feature matrix. Use training data for in-sample relativities, or a
         representative holdout sample for out-of-sample. Polars DataFrames are
@@ -212,7 +212,7 @@ class SHAPRelativities:
         recomputes SHAP values (e.g. after changing X or the background data).
 
         The feature matrix is converted to pandas internally for shap's
-        TreeExplainer. The conversion is a necessary bridge — shap requires
+        TreeExplainer. The conversion is a necessary bridge - shap requires
         pandas for column name handling.
 
         Returns
@@ -220,7 +220,7 @@ class SHAPRelativities:
         SHAPRelativities
             Self, for method chaining.
         """
-        # Convert to pandas for shap — unavoidable bridge
+        # Convert to pandas for shap - unavoidable bridge
         X_pd = _to_pandas(self._X)
 
         bg_data = None
@@ -277,7 +277,7 @@ class SHAPRelativities:
 
     def baseline(self) -> float:
         """
-        exp(expected_value) — the base rate in prediction space.
+        exp(expected_value) - the base rate in prediction space.
 
         If annualise_exposure=True and exposure was provided, this is adjusted
         for the average log-exposure offset so it represents an annualised rate.

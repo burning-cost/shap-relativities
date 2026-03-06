@@ -8,13 +8,13 @@ Every UK pricing team we've spoken to has the same problem: a GBM sitting on a s
 
 So the GBM sits in a notebook. The GLM goes to production.
 
-`shap-relativities` closes that gap. It extracts multiplicative rating relativities from CatBoost, LightGBM, and XGBoost models using SHAP values — the same format as `exp(beta)` from a GLM, with confidence intervals, exposure weighting, and a validation check that the numbers actually reconstruct the model's predictions.
+`shap-relativities` closes that gap. It extracts multiplicative rating relativities from CatBoost, LightGBM, and XGBoost models using SHAP values - the same format as `exp(beta)` from a GLM, with confidence intervals, exposure weighting, and a validation check that the numbers actually reconstruct the model's predictions.
 
 **CatBoost is the recommended default.** It handles categorical features natively without label encoding, which removes a common source of information loss in insurance pricing models. The library also supports LightGBM and XGBoost as optional alternatives.
 
 **Output is a Polars DataFrame.** The library accepts either Polars or pandas DataFrames as input, and returns Polars. Pandas is a bridge dependency: shap's TreeExplainer uses it internally, so it is still installed with the `[ml]` extra.
 
-**Blog post:** [Extracting Rating Relativities from GBMs with SHAP](https://burningcost.github.io/2026/03/05/extracting-rating-relativities-from-gbms-with-shap/) — worked example, the maths, and a discussion of limitations for presenting to regulators and pricing committees.
+**Blog post:** [Extracting Rating Relativities from GBMs with SHAP](https://burningcost.github.io/2026/03/05/extracting-rating-relativities-from-gbms-with-shap/) - worked example, the maths, and a discussion of limitations for presenting to regulators and pricing committees.
 
 ---
 
@@ -51,7 +51,7 @@ import catboost
 from shap_relativities import SHAPRelativities
 from shap_relativities.datasets.motor import load_motor, TRUE_FREQ_PARAMS
 
-# Synthetic UK motor portfolio — 50k policies, known DGP
+# Synthetic UK motor portfolio - 50k policies, known DGP
 # load_motor() returns a Polars DataFrame
 df = load_motor(n_policies=50_000, seed=42)
 df = df.with_columns([
@@ -64,7 +64,7 @@ features = ["area_code", "ncd_years", "has_convictions"]
 X = df.select(features)
 
 # Train a Poisson frequency model with CatBoost
-# CatBoost requires a pandas Pool for training — the bridge conversion is explicit
+# CatBoost requires a pandas Pool for training - the bridge conversion is explicit
 pool = catboost.Pool(
     data=X.to_pandas(),
     label=df["claim_count"].to_numpy(),
@@ -80,7 +80,7 @@ model = catboost.CatBoostRegressor(
 )
 model.fit(pool)
 
-# Extract relativities — pass the Polars DataFrame directly
+# Extract relativities - pass the Polars DataFrame directly
 sr = SHAPRelativities(
     model=model,
     X=X,                           # Polars DataFrame
@@ -96,7 +96,7 @@ rels = sr.extract_relativities(
 print(rels.select(["feature", "level", "relativity", "lower_ci", "upper_ci"]))
 ```
 
-Output (approximately — the GBM recovers the known DGP):
+Output (approximately - the GBM recovers the known DGP):
 
 ```
               feature level  relativity  lower_ci  upper_ci
@@ -142,7 +142,7 @@ For insurance pricing, CatBoost has two advantages over LightGBM and XGBoost:
 
 2. **Ordered boosting.** CatBoost's default training algorithm reduces target leakage from high-cardinality categoricals, which is relevant for vehicle group (50 levels) or postcode sector.
 
-LightGBM and XGBoost remain supported — if you have an existing model trained with one of them, the SHAP extraction works identically.
+LightGBM and XGBoost remain supported - if you have an existing model trained with one of them, the SHAP extraction works identically.
 
 ---
 
@@ -169,7 +169,7 @@ SE = shap_std / sqrt(n_obs)
 CI = exp(mean_shap ± z * SE - base_shap)
 ```
 
-These quantify data uncertainty — how precisely we've estimated each level's mean SHAP contribution given the portfolio. They do not capture model uncertainty from the GBM fitting process.
+These quantify data uncertainty - how precisely we've estimated each level's mean SHAP contribution given the portfolio. They do not capture model uncertainty from the GBM fitting process.
 
 ---
 
@@ -189,7 +189,7 @@ print(checks["sparse_levels"])
 #   message='4 factor level(s) have fewer than 30 observations. ...')
 ```
 
-The reconstruction check verifies that `exp(shap_values.sum(axis=1) + expected_value)` matches the model's predictions to within 1e-4. If this fails, the explainer was constructed incorrectly — almost always a mismatch between the model's objective and the SHAP output type.
+The reconstruction check verifies that `exp(shap_values.sum(axis=1) + expected_value)` matches the model's predictions to within 1e-4. If this fails, the explainer was constructed incorrectly - almost always a mismatch between the model's objective and the SHAP output type.
 
 The sparse levels check flags categories where CLT CIs will be unreliable. 30 observations is the CLT rule of thumb; treat the intervals for flagged levels with caution.
 
@@ -208,7 +208,7 @@ age_curve = sr.extract_continuous_curve(
 # Returns a Polars DataFrame: feature_value, relativity, lower_ci, upper_ci
 ```
 
-`smooth_method="isotonic"` enforces monotonicity via isotonic regression — useful when you have a strong prior that the relativity is one-directional (younger drivers are higher risk, more mileage is more exposure).
+`smooth_method="isotonic"` enforces monotonicity via isotonic regression - useful when you have a strong prior that the relativity is one-directional (younger drivers are higher risk, more mileage is more exposure).
 
 ---
 
@@ -236,7 +236,7 @@ SHAPRelativities(
 | `.extract_relativities(normalise_to, base_levels, ci_method, ci_level)` | `pl.DataFrame` | Main output: one row per (feature, level). |
 | `.extract_continuous_curve(feature, n_points, smooth_method)` | `pl.DataFrame` | Smoothed relativity curve for a continuous feature. |
 | `.validate()` | `dict[str, CheckResult]` | Diagnostic checks: reconstruction, feature coverage, sparse levels. |
-| `.baseline()` | `float` | `exp(expected_value)` — the base rate in prediction space. |
+| `.baseline()` | `float` | `exp(expected_value)` - the base rate in prediction space. |
 | `.shap_values()` | `np.ndarray` | Raw SHAP values, shape `(n_obs, n_features)`. |
 | `.plot_relativities(features, show_ci, figsize)` | None | Bar charts (categorical) and line charts (continuous). Requires `[plot]`. |
 | `.to_dict()` | `dict` | Serialisable state. Does not include the original model. |
@@ -277,7 +277,7 @@ Frequency is Poisson with log-linear predictor. Severity is Gamma. `TRUE_FREQ_PA
 
 ## Limitations
 
-**Correlated features.** SHAP attribution for correlated features is not uniquely defined under `tree_path_dependent`. Area band and socioeconomic index will share attribution in a way that depends on tree split order. Use `feature_perturbation="interventional"` with a background dataset to correct for correlations — this is more principled but substantially slower.
+**Correlated features.** SHAP attribution for correlated features is not uniquely defined under `tree_path_dependent`. Area band and socioeconomic index will share attribution in a way that depends on tree split order. Use `feature_perturbation="interventional"` with a background dataset to correct for correlations - this is more principled but substantially slower.
 
 **Interaction effects.** TreeSHAP allocates interaction effects back to individual features. If area and vehicle age interact in the model, some of that interaction gets attributed to each feature, not cleanly separated into main effect and interaction. `shap_interaction_values()` gives pure main effects but is O(n * p^2).
 
