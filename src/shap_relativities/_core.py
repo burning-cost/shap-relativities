@@ -6,11 +6,10 @@ rating relativities. Output is directly comparable to GLM exp(beta) relativities
 a table of (feature, level, relativity) triples where the base level = 1.0 and
 relativities multiply together to give the model's expected prediction.
 
-Supports CatBoost, LightGBM, and XGBoost models with log-link objectives
-(Poisson, Tweedie, Gamma). CatBoost is the default and recommended model —
-it handles categorical features natively without encoding, which removes a
-common source of information loss in insurance pricing models. Will not work
-correctly with linear-link models.
+Supports CatBoost models with log-link objectives (Poisson, Tweedie, Gamma).
+CatBoost is the default and recommended model - it handles categorical features
+natively without encoding, which removes a common source of information loss in
+insurance pricing models. Will not work correctly with linear-link models.
 
 Known limitations
 -----------------
@@ -105,9 +104,9 @@ class SHAPRelativities:
     Parameters
     ----------
     model
-        A trained CatBoost, LightGBM Booster, LightGBM LGBMModel, or XGBoost
-        Booster. Must use a log-link objective (Poisson, Tweedie, Gamma).
-        CatBoost is the recommended default - it handles categoricals natively.
+        A trained CatBoost model. Must use a log-link objective (Poisson,
+        Tweedie, Gamma). CatBoost is the recommended default - it handles
+        categoricals natively.
     X : pl.DataFrame | pd.DataFrame
         Feature matrix. Use training data for in-sample relativities, or a
         representative holdout sample for out-of-sample. Polars DataFrames are
@@ -240,7 +239,7 @@ class SHAPRelativities:
 
         raw = explainer.shap_values(X_pd)
 
-        # LightGBM with multiple outputs returns a list
+        # Some models return a list when there is a single output
         if isinstance(raw, list):
             if len(raw) == 1:
                 raw = raw[0]

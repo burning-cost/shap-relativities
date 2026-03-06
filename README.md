@@ -8,9 +8,7 @@ Every UK pricing team we've spoken to has the same problem: a GBM sitting on a s
 
 So the GBM sits in a notebook. The GLM goes to production.
 
-`shap-relativities` closes that gap. It extracts multiplicative rating relativities from CatBoost, LightGBM, and XGBoost models using SHAP values - the same format as `exp(beta)` from a GLM, with confidence intervals, exposure weighting, and a validation check that the numbers actually reconstruct the model's predictions.
-
-**CatBoost is the recommended default.** It handles categorical features natively without label encoding, which removes a common source of information loss in insurance pricing models. The library also supports LightGBM and XGBoost as optional alternatives.
+`shap-relativities` closes that gap. It extracts multiplicative rating relativities from CatBoost models using SHAP values - the same format as `exp(beta)` from a GLM, with confidence intervals, exposure weighting, and a validation check that the numbers actually reconstruct the model's predictions.
 
 **Output is a Polars DataFrame.** The library accepts either Polars or pandas DataFrames as input, and returns Polars. Pandas is a bridge dependency: shap's TreeExplainer uses it internally, so it is still installed with the `[ml]` extra.
 
@@ -30,13 +28,6 @@ Or pick what you need:
 uv add "shap-relativities[ml]"    # shap + catboost + scikit-learn + pandas bridge
 uv add "shap-relativities[plot]"  # matplotlib for plots
 uv add shap-relativities          # core only (polars, numpy, scipy)
-```
-
-LightGBM and XGBoost are still supported but not installed by default:
-
-```bash
-uv add "shap-relativities[lightgbm]"
-uv add "shap-relativities[xgboost]"
 ```
 
 ---
@@ -89,7 +80,7 @@ sr = SHAPRelativities(
 )
 sr.fit()
 
-rels = sr.extract_relativities(
+ rels = sr.extract_relativities(
     normalise_to="base_level",
     base_levels={"area_code": 0, "ncd_years": 0, "has_convictions": 0},
 )
@@ -136,13 +127,11 @@ rels = extract_relativities(
 
 ## Why CatBoost?
 
-For insurance pricing, CatBoost has two advantages over LightGBM and XGBoost:
+For insurance pricing, CatBoost has two advantages over alternatives:
 
 1. **Native categoricals.** CatBoost handles string and integer categorical features without encoding. You pass area band "A"-"F" directly; no label encoding step that obscures the feature's meaning in the relativity table.
 
 2. **Ordered boosting.** CatBoost's default training algorithm reduces target leakage from high-cardinality categoricals, which is relevant for vehicle group (50 levels) or postcode sector.
-
-LightGBM and XGBoost remain supported - if you have an existing model trained with one of them, the SHAP extraction works identically.
 
 ---
 
@@ -218,7 +207,7 @@ age_curve = sr.extract_continuous_curve(
 
 ```python
 SHAPRelativities(
-    model,                                     # CatBoost, LightGBM, or XGBoost model
+    model,                                     # CatBoost model
     X: pl.DataFrame | pd.DataFrame,            # feature matrix (Polars preferred)
     exposure: pl.Series | pd.Series | None = None,  # earned policy years
     categorical_features: list[str] | None = None,

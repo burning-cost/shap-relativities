@@ -48,7 +48,9 @@ def extract_relativities(
     Parameters
     ----------
     model
-        Trained CatBoost, LightGBM, or XGBoost model with a log-link objective. CatBoost is recommended.
+        Trained CatBoost model with a log-link objective (Poisson, Tweedie,
+        or Gamma). CatBoost is the recommended choice - it handles categorical
+        features natively without encoding.
     X : pd.DataFrame
         Feature matrix.
     exposure : pd.Series | None
