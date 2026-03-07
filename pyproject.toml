@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = [
     "shap", "insurance", "pricing", "actuarial", "relativities",
-    "gbm", "catboost", "xgboost", "lightgbm",
+    "gbm", "catboost",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -56,13 +56,6 @@ all = [
     "scikit-learn>=1.3",
     "pandas>=2.0",
     "matplotlib>=3.7",
-]
-# Optional: alternative GBMs — supported but not the default
-lightgbm = [
-    "lightgbm>=4.0",
-]
-xgboost = [
-    "xgboost>=2.0",
 ]
 dev = [
     "pytest",
