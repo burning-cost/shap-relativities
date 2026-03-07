@@ -43,20 +43,14 @@ def check_reconstruction(
     material deviation suggests the explainer was constructed incorrectly
     (e.g. wrong model_output setting).
 
-    Parameters
-    ----------
-    shap_values : np.ndarray, shape (n_obs, n_features)
-        SHAP values in log space.
-    expected_value : float
-        Explainer expected value (intercept in log space).
-    predictions : np.ndarray, shape (n_obs,)
-        Model predictions in response space.
-    tolerance : float
-        Maximum acceptable absolute difference.
+    Args:
+        shap_values: SHAP values in log space, shape (n_obs, n_features).
+        expected_value: Explainer expected value (intercept in log space).
+        predictions: Model predictions in response space, shape (n_obs,).
+        tolerance: Maximum acceptable absolute difference.
 
-    Returns
-    -------
-    CheckResult
+    Returns:
+        CheckResult with passed=True if max error is below tolerance.
     """
     reconstructed = np.exp(shap_values.sum(axis=1) + expected_value)
     max_diff = float(np.abs(reconstructed - predictions).max())
@@ -75,16 +69,12 @@ def check_feature_coverage(
     """
     Verify that every feature in X has a corresponding SHAP column.
 
-    Parameters
-    ----------
-    shap_feature_names : list[str]
-        Feature names from the explainer.
-    expected_features : list[str]
-        Feature names from X.
+    Args:
+        shap_feature_names: Feature names from the explainer.
+        expected_features: Feature names from X.
 
-    Returns
-    -------
-    CheckResult
+    Returns:
+        CheckResult with passed=True if no features are missing.
     """
     missing = set(expected_features) - set(shap_feature_names)
     passed = len(missing) == 0
@@ -107,16 +97,14 @@ def check_sparse_levels(
     flags levels where the CI should be treated with caution rather than as
     a hard threshold.
 
-    Parameters
-    ----------
-    aggregated : pl.DataFrame
-        Output from aggregate_categorical, with n_obs column.
-    min_obs : int
-        Minimum observation count per level. Default 30 (CLT rule of thumb).
+    Args:
+        aggregated: Output from aggregate_categorical, with n_obs column.
+        min_obs: Minimum observation count per level. Default 30 (CLT rule
+            of thumb).
 
-    Returns
-    -------
-    CheckResult
+    Returns:
+        CheckResult with passed=False if any level has fewer than min_obs
+        observations.
     """
     if "n_obs" not in aggregated.columns:
         return CheckResult(passed=True, value=0.0, message="No n_obs column to check.")

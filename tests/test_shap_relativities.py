@@ -1,22 +1,22 @@
 """
 Tests for SHAP relativities module.
 
-Five test groups:
+Six test groups:
 
-1. Reconstruction — SHAP values must reconstruct model predictions exactly.
-2. Relativity recovery — extracted relativities should approximate the true DGP
+1. Reconstruction - SHAP values must reconstruct model predictions exactly.
+2. Relativity recovery - extracted relativities should approximate the true DGP
    parameters from the synthetic motor dataset.
-3. Normalisation — base_level mode gives base=1.0; mean mode gives geometric
+3. Normalisation - base_level mode gives base=1.0; mean mode gives geometric
    exposure-weighted mean=1.0 (log-space mean=0).
-4. Validation diagnostics — validate() returns sensible results.
-5. Edge cases — single-level categorical, serialisation round-trip.
+4. Validation diagnostics - validate() returns sensible results.
+5. Edge cases - single-level categorical, serialisation round-trip.
 
 Test data: synthetic motor dataset at 10,000 policies. Features are chosen
 to be integers 0-5 (area_code, ncd_years) or binary (has_convictions), so all
 are treated as categorical for clean level-by-level relativity comparison.
 
 Model: CatBoost with a Poisson objective. CatBoost is the default GBM in
-this library — it handles categoricals natively without label encoding, and
+this library - it handles categoricals natively without label encoding, and
 its SHAP implementation is compatible with shap's TreeExplainer.
 """
 
@@ -50,7 +50,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def motor_data() -> pl.DataFrame:
-    """10k policy synthetic dataset — fast to generate, stable enough for GLM tests."""
+    """10k policy synthetic dataset - fast to generate, stable enough for GLM tests."""
     return load_motor(n_policies=10_000, seed=42)
 
 
@@ -59,7 +59,7 @@ def catboost_model_and_X(motor_data: pl.DataFrame):
     """
     Train a CatBoost Poisson model on a subset of motor features.
 
-    Features: area_code, ncd_years, has_convictions — all treated as categorical
+    Features: area_code, ncd_years, has_convictions - all treated as categorical
     (discrete integer levels) for clean relativity comparison.
 
     CatBoost is trained via its Pool API. The feature matrix is converted to
@@ -389,7 +389,7 @@ class TestValidation:
         assert "feature_coverage" in checks
 
     def test_feature_coverage_always_passes(self, catboost_model_and_X) -> None:
-        """All X columns should appear in SHAP output — coverage always passes."""
+        """All X columns should appear in SHAP output - coverage always passes."""
         model, X, _ = catboost_model_and_X
 
         sr = SHAPRelativities(
@@ -594,3 +594,172 @@ class TestEdgeCases:
         rels = sr.extract_relativities(normalise_to="mean")
         assert isinstance(rels, pl.DataFrame)
         assert len(rels) > 0
+
+
+# ---------------------------------------------------------------------------
+# 6. ci_method, continuous curves, and error handling
+# ---------------------------------------------------------------------------
+
+
+class TestCiMethodAndErrors:
+    def test_ci_method_none_returns_nan_ci(self, catboost_model_and_X) -> None:
+        """ci_method='none' should produce NaN lower_ci and upper_ci."""
+        model, X, _ = catboost_model_and_X
+
+        sr = SHAPRelativities(
+            model=model,
+            X=X,
+            categorical_features=["area_code", "ncd_years", "has_convictions"],
+        )
+        sr.fit()
+
+        rels = sr.extract_relativities(
+            normalise_to="base_level",
+            base_levels={"area_code": 0, "ncd_years": 0, "has_convictions": 0},
+            ci_method="none",
+        )
+
+        import math
+        for row in rels.iter_rows(named=True):
+            assert math.isnan(row["lower_ci"]), f"lower_ci not NaN for {row}"
+            assert math.isnan(row["upper_ci"]), f"upper_ci not NaN for {row}"
+
+    def test_ci_method_none_mean_normalisation(self, catboost_model_and_X) -> None:
+        """ci_method='none' with normalise_to='mean' should return valid relativities."""
+        model, X, _ = catboost_model_and_X
+
+        sr = SHAPRelativities(
+            model=model,
+            X=X,
+            categorical_features=["area_code", "ncd_years", "has_convictions"],
+        )
+        sr.fit()
+
+        rels = sr.extract_relativities(normalise_to="mean", ci_method="none")
+
+        assert isinstance(rels, pl.DataFrame)
+        assert (rels["relativity"] > 0).all()
+
+    def test_bootstrap_not_implemented(self, catboost_model_and_X) -> None:
+        """ci_method='bootstrap' should raise NotImplementedError."""
+        model, X, _ = catboost_model_and_X
+
+        sr = SHAPRelativities(
+            model=model,
+            X=X,
+            categorical_features=["area_code", "ncd_years", "has_convictions"],
+        )
+        sr.fit()
+
+        with pytest.raises(NotImplementedError):
+            sr.extract_relativities(ci_method="bootstrap")
+
+    def test_missing_base_level_raises_or_warns(self, catboost_model_and_X) -> None:
+        """
+        If base_level is omitted for a feature, a warning is issued and
+        the lowest mean SHAP level is used as fallback.
+        """
+        model, X, _ = catboost_model_and_X
+
+        sr = SHAPRelativities(
+            model=model,
+            X=X,
+            categorical_features=["area_code", "ncd_years", "has_convictions"],
+        )
+        sr.fit()
+
+        with pytest.warns(UserWarning, match="No base level specified"):
+            rels = sr.extract_relativities(
+                normalise_to="base_level",
+                base_levels={},  # no base levels specified
+            )
+
+        # Should still return a valid DataFrame
+        assert isinstance(rels, pl.DataFrame)
+        assert len(rels) > 0
+
+    def test_invalid_base_level_raises(self, catboost_model_and_X) -> None:
+        """Passing a base level that doesn't exist in the data should raise ValueError."""
+        model, X, _ = catboost_model_and_X
+
+        sr = SHAPRelativities(
+            model=model,
+            X=X,
+            categorical_features=["area_code", "ncd_years", "has_convictions"],
+        )
+        sr.fit()
+
+        with pytest.raises(ValueError, match="not found in levels"):
+            sr.extract_relativities(
+                normalise_to="base_level",
+                base_levels={"area_code": 99, "ncd_years": 0, "has_convictions": 0},
+            )
+
+    def test_extract_continuous_curve_isotonic(self, catboost_model_and_X) -> None:
+        """extract_continuous_curve with smooth_method='isotonic' returns a valid DataFrame."""
+        model, X, _ = catboost_model_and_X
+
+        # Add a continuous feature by including ncd_years but as continuous
+        sr = SHAPRelativities(
+            model=model,
+            X=X,
+            categorical_features=["area_code", "has_convictions"],
+            continuous_features=["ncd_years"],
+        )
+        sr.fit()
+
+        curve = sr.extract_continuous_curve("ncd_years", n_points=50, smooth_method="isotonic")
+
+        assert isinstance(curve, pl.DataFrame)
+        assert "feature_value" in curve.columns
+        assert "relativity" in curve.columns
+        assert len(curve) == 50
+        assert (curve["relativity"] > 0).all()
+
+    def test_extract_continuous_curve_none(self, catboost_model_and_X) -> None:
+        """extract_continuous_curve with smooth_method='none' returns per-observation rows."""
+        model, X, _ = catboost_model_and_X
+
+        sr = SHAPRelativities(
+            model=model,
+            X=X,
+            categorical_features=["area_code", "has_convictions"],
+            continuous_features=["ncd_years"],
+        )
+        sr.fit()
+
+        curve = sr.extract_continuous_curve("ncd_years", smooth_method="none")
+
+        assert isinstance(curve, pl.DataFrame)
+        assert len(curve) == len(X)
+
+    def test_extract_continuous_curve_invalid_feature(self, catboost_model_and_X) -> None:
+        """extract_continuous_curve for unknown feature should raise ValueError."""
+        model, X, _ = catboost_model_and_X
+
+        sr = SHAPRelativities(
+            model=model,
+            X=X,
+            categorical_features=["area_code", "ncd_years", "has_convictions"],
+        )
+        sr.fit()
+
+        with pytest.raises(ValueError, match="not in X"):
+            sr.extract_continuous_curve("nonexistent_feature")
+
+    def test_extract_continuous_curve_invalid_smooth_method(
+        self, catboost_model_and_X
+    ) -> None:
+        """Unknown smooth_method should raise ValueError."""
+        model, X, _ = catboost_model_and_X
+
+        sr = SHAPRelativities(
+            model=model,
+            X=X,
+            categorical_features=["area_code", "has_convictions"],
+            continuous_features=["ncd_years"],
+        )
+        sr.fit()
+
+        with pytest.raises(ValueError, match="Unknown smooth_method"):
+            sr.extract_continuous_curve("ncd_years", smooth_method="spline")

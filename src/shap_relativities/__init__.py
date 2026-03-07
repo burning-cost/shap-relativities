@@ -24,50 +24,50 @@ Or use the convenience wrapper for one-liners:
 ...                             categorical_features=["area"])
 """
 
+from __future__ import annotations
+
+from typing import Any
+
+import polars as pl
+
 from ._core import SHAPRelativities
 
 __all__ = ["SHAPRelativities", "extract_relativities"]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def extract_relativities(
-    model,
-    X,
-    exposure=None,
-    categorical_features=None,
-    base_levels=None,
+    model: Any,
+    X: Any,
+    exposure: Any = None,
+    categorical_features: list[str] | None = None,
+    base_levels: dict[str, str | float | int] | None = None,
     ci_method: str = "clt",
-):
+) -> pl.DataFrame:
     """
     One-shot extraction of SHAP relativities from a tree model.
 
     Wraps SHAPRelativities.fit() and extract_relativities() for cases where
     you don't need the intermediate object.
 
-    Parameters
-    ----------
-    model
-        Trained CatBoost model with a log-link objective (Poisson, Tweedie,
-        or Gamma). CatBoost is the recommended choice - it handles categorical
-        features natively without encoding.
-    X : pd.DataFrame
-        Feature matrix.
-    exposure : pd.Series | None
-        Earned policy years. If None, all observations are equally weighted.
-    categorical_features : list[str] | None
-        Features to aggregate by level. If None, all non-numeric columns are
-        treated as categorical.
-    base_levels : dict[str, str | float] | None
-        Base level for each categorical feature (gets relativity = 1.0).
-    ci_method : str
-        "clt" (default) or "none".
+    Args:
+        model: Trained CatBoost model with a log-link objective (Poisson,
+            Tweedie, or Gamma). CatBoost is the recommended choice - it handles
+            categorical features natively without encoding.
+        X: Feature matrix. Accepts a Polars or pandas DataFrame. Polars is
+            preferred; pandas is accepted and converted internally.
+        exposure: Earned policy years. If None, all observations are equally
+            weighted.
+        categorical_features: Features to aggregate by level. If None, all
+            non-numeric columns are treated as categorical.
+        base_levels: Base level for each categorical feature (gets
+            relativity = 1.0).
+        ci_method: "clt" (default) or "none".
 
-    Returns
-    -------
-    pd.DataFrame
-        Columns: feature, level, relativity, lower_ci, upper_ci,
-        mean_shap, shap_std, n_obs, exposure_weight.
+    Returns:
+        Polars DataFrame with columns: feature, level, relativity, lower_ci,
+        upper_ci, mean_shap, shap_std, n_obs, exposure_weight.
     """
     sr = SHAPRelativities(model, X, exposure, categorical_features)
     sr.fit()

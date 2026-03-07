@@ -4,11 +4,11 @@ Matplotlib visualisations for SHAP relativities.
 Bar charts for categorical features, line charts for continuous features.
 Both show 95% confidence intervals by default.
 
-Design choice: plots are deliberately plain — no corporate styling, no
+Design choice: plots are deliberately plain - no corporate styling, no
 seaborn dependency. Callers can apply their own style sheets on top.
 
 Input is a Polars DataFrame from extract_relativities(). A thin conversion
-to numpy arrays is the only pandas dependency here, and it doesn't exist —
+to numpy arrays is the only pandas dependency here, and it doesn't exist -
 Polars columns convert directly to numpy.
 """
 
@@ -28,24 +28,18 @@ def plot_categorical(
     feature: str,
     ax: "matplotlib.axes.Axes",
     show_ci: bool = True,
-    colour: str = "steelblue",
+    color: str = "steelblue",
 ) -> None:
     """
     Bar chart of categorical relativities for a single feature.
 
-    Parameters
-    ----------
-    data : pl.DataFrame
-        Rows for this feature from extract_relativities() output.
-        Required columns: level, relativity, lower_ci, upper_ci.
-    feature : str
-        Feature name, used as the axis label.
-    ax : matplotlib.axes.Axes
-        Axes to draw on.
-    show_ci : bool
-        If True, draw error bars for confidence intervals.
-    colour : str
-        Bar colour.
+    Args:
+        data: Rows for this feature from extract_relativities() output.
+            Required columns: level, relativity, lower_ci, upper_ci.
+        feature: Feature name, used as the axis label.
+        ax: Axes to draw on.
+        show_ci: If True, draw error bars for confidence intervals.
+        color: Bar color.
     """
     levels = data["level"].cast(pl.Utf8).to_numpy()
     x = np.arange(len(levels))
@@ -58,9 +52,9 @@ def plot_categorical(
     else:
         yerr = None
 
-    ax.bar(x, relativities, color=colour, alpha=0.8, yerr=yerr,
+    ax.bar(x, relativities, color=color, alpha=0.8, yerr=yerr,
            capsize=4, error_kw={"linewidth": 1})
-    ax.axhline(1.0, colour="black", linewidth=0.8, linestyle="--", alpha=0.6)
+    ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", alpha=0.6)
     ax.set_xticks(x)
     ax.set_xticklabels(levels, rotation=45, ha="right")
     ax.set_ylabel("Relativity")
@@ -72,31 +66,25 @@ def plot_continuous(
     feature: str,
     ax: "matplotlib.axes.Axes",
     show_ci: bool = True,
-    colour: str = "steelblue",
+    color: str = "steelblue",
 ) -> None:
     """
     Line chart of continuous relativities for a single feature.
 
-    Parameters
-    ----------
-    data : pl.DataFrame
-        Rows for this feature from extract_relativities() output.
-        Required columns: level (numeric), relativity, lower_ci, upper_ci.
-    feature : str
-        Feature name, used as the axis label.
-    ax : matplotlib.axes.Axes
-        Axes to draw on.
-    show_ci : bool
-        If True, draw a shaded confidence band.
-    colour : str
-        Line colour.
+    Args:
+        data: Rows for this feature from extract_relativities() output.
+            Required columns: level (numeric), relativity, lower_ci, upper_ci.
+        feature: Feature name, used as the axis label.
+        ax: Axes to draw on.
+        show_ci: If True, draw a shaded confidence band.
+        color: Line color.
     """
     data_sorted = data.sort("level")
     x = data_sorted["level"].to_numpy()
     y = data_sorted["relativity"].to_numpy()
 
-    ax.plot(x, y, colour=colour, linewidth=1.5)
-    ax.axhline(1.0, colour="black", linewidth=0.8, linestyle="--", alpha=0.6)
+    ax.plot(x, y, color=color, linewidth=1.5)
+    ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", alpha=0.6)
 
     if show_ci and "lower_ci" in data_sorted.columns and "upper_ci" in data_sorted.columns:
         ax.fill_between(
@@ -104,7 +92,7 @@ def plot_continuous(
             data_sorted["lower_ci"].to_numpy(),
             data_sorted["upper_ci"].to_numpy(),
             alpha=0.2,
-            colour=colour,
+            color=color,
         )
 
     ax.set_xlabel(feature)
@@ -126,20 +114,13 @@ def plot_relativities(
     Categorical features get bar charts; continuous features get line charts.
     If features is None, all features in relativities_df are plotted.
 
-    Parameters
-    ----------
-    relativities_df : pl.DataFrame
-        Output from SHAPRelativities.extract_relativities().
-    categorical_features : list[str]
-        Feature names to treat as categorical (bar chart).
-    continuous_features : list[str]
-        Feature names to treat as continuous (line chart).
-    features : list[str] | None
-        Subset of features to plot. Defaults to all.
-    show_ci : bool
-        Whether to show confidence intervals.
-    figsize : tuple[int, int]
-        Overall figure size.
+    Args:
+        relativities_df: Output from SHAPRelativities.extract_relativities().
+        categorical_features: Feature names to treat as categorical (bar chart).
+        continuous_features: Feature names to treat as continuous (line chart).
+        features: Subset of features to plot. Defaults to all.
+        show_ci: Whether to show confidence intervals.
+        figsize: Overall figure size.
     """
     import matplotlib.pyplot as plt
 

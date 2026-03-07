@@ -14,12 +14,12 @@ insurance pricing models. Will not work correctly with linear-link models.
 Known limitations
 -----------------
 - SHAP attribution for correlated features is not uniquely defined. Correlated
-  features "borrow" attribution from each other. There is no fix; document this
-  when presenting results.
+  features share attribution in a way that depends on tree split order. Document
+  this when presenting results.
 - CLT confidence intervals capture data uncertainty only - not model uncertainty
   from the GBM fitting process.
 - TreeSHAP allocates interaction effects back to individual features by default.
-  Use shap_interaction_values() if you need pure main effects, but be aware that
+  Use shap_interaction_values() if you need pure main effects, but note that
   this is O(n * p^2) and quickly becomes infeasible.
 
 Data handling
@@ -101,35 +101,30 @@ class SHAPRelativities:
             base_levels={"area": "A", "ncd_years": 0},
         )
 
-    Parameters
-    ----------
-    model
-        A trained CatBoost model. Must use a log-link objective (Poisson,
-        Tweedie, Gamma). CatBoost is the recommended default - it handles
-        categoricals natively.
-    X : pl.DataFrame | pd.DataFrame
-        Feature matrix. Use training data for in-sample relativities, or a
-        representative holdout sample for out-of-sample. Polars DataFrames are
-        preferred; pandas DataFrames are accepted and converted internally.
-    exposure : pl.Series | pd.Series | np.ndarray | None
-        Earned policy years (or other volume measure). Used as observation
-        weights throughout. If None, all observations are weighted equally.
-    categorical_features : list[str] | None
-        Features to aggregate by level (bar-chart style). If None, all
-        non-numeric columns are treated as categorical.
-    continuous_features : list[str] | None
-        Features to leave as per-observation points. If None, all numeric
-        columns are treated as continuous.
-    feature_perturbation : str
-        "tree_path_dependent" (default, fast, no background data needed) or
-        "interventional" (corrects for feature correlation, needs background_data).
-    background_data : pl.DataFrame | pd.DataFrame | None
-        Required only if feature_perturbation="interventional".
-    n_background_samples : int
-        Number of background samples for interventional SHAP. Default 1000.
-    annualise_exposure : bool
-        If True and exposure is provided, subtract mean log(exposure) from
-        the expected_value to give an annualised baseline. Default True.
+    Args:
+        model: A trained CatBoost model. Must use a log-link objective (Poisson,
+            Tweedie, Gamma). CatBoost is the recommended default - it handles
+            categoricals natively.
+        X: Feature matrix. Use training data for in-sample relativities, or a
+            representative holdout sample for out-of-sample. Polars DataFrames
+            are preferred; pandas DataFrames are accepted and converted
+            internally.
+        exposure: Earned policy years (or other volume measure). Used as
+            observation weights throughout. If None, all observations are
+            weighted equally.
+        categorical_features: Features to aggregate by level (bar-chart style).
+            If None, all non-numeric columns are treated as categorical.
+        continuous_features: Features to leave as per-observation points.
+            If None, all numeric columns are treated as continuous.
+        feature_perturbation: "tree_path_dependent" (default, fast, no
+            background data needed) or "interventional" (corrects for feature
+            correlation, needs background_data).
+        background_data: Required only if feature_perturbation="interventional".
+        n_background_samples: Number of background samples for interventional
+            SHAP. Default 1000.
+        annualise_exposure: If True and exposure is provided, subtract mean
+            log(exposure) from the expected_value to give an annualised
+            baseline. Default True.
     """
 
     def __init__(
@@ -214,9 +209,7 @@ class SHAPRelativities:
         TreeExplainer. The conversion is a necessary bridge - shap requires
         pandas for column name handling.
 
-        Returns
-        -------
-        SHAPRelativities
+        Returns:
             Self, for method chaining.
         """
         # Convert to pandas for shap - unavoidable bridge
@@ -267,9 +260,8 @@ class SHAPRelativities:
         """
         Raw SHAP values, shape (n_obs, n_features), in log space.
 
-        Returns
-        -------
-        np.ndarray
+        Returns:
+            Array of shape (n_obs, n_features).
         """
         self._check_fitted()
         return self._shap_values  # type: ignore[return-value]
@@ -281,9 +273,8 @@ class SHAPRelativities:
         If annualise_exposure=True and exposure was provided, this is adjusted
         for the average log-exposure offset so it represents an annualised rate.
 
-        Returns
-        -------
-        float
+        Returns:
+            Base rate as a float.
         """
         self._check_fitted()
         ev = self._expected_value  # type: ignore[assignment]
@@ -305,28 +296,22 @@ class SHAPRelativities:
         """
         Extract multiplicative relativities from SHAP values.
 
-        Parameters
-        ----------
-        normalise_to : str
-            "base_level": base level for each feature gets relativity = 1.0.
-            "mean": exposure-weighted portfolio mean = 1.0.
-        base_levels : dict[str, str | float | int] | None
-            Mapping of feature -> base level value. Required for categorical
-            features when normalise_to="base_level". Continuous features
-            automatically use mean normalisation regardless of this setting.
-        ci_method : str
-            "clt": CLT approximation (default, fast). "none": no CIs.
-            "bootstrap" is not yet implemented.
-        n_bootstrap : int
-            Ignored unless ci_method="bootstrap".
-        ci_level : float
-            Two-sided confidence level. Default 0.95.
+        Args:
+            normalise_to: "base_level" (base level for each feature gets
+                relativity = 1.0) or "mean" (exposure-weighted portfolio
+                mean = 1.0).
+            base_levels: Mapping of feature -> base level value. Required for
+                categorical features when normalise_to="base_level". Continuous
+                features automatically use mean normalisation regardless of
+                this setting.
+            ci_method: "clt" (CLT approximation, default, fast) or "none" (no
+                CIs). "bootstrap" is not yet implemented.
+            n_bootstrap: Ignored unless ci_method="bootstrap".
+            ci_level: Two-sided confidence level. Default 0.95.
 
-        Returns
-        -------
-        pl.DataFrame
-            Columns: feature, level, relativity, lower_ci, upper_ci,
-            mean_shap, shap_std, n_obs, exposure_weight.
+        Returns:
+            Polars DataFrame with columns: feature, level, relativity,
+            lower_ci, upper_ci, mean_shap, shap_std, n_obs, exposure_weight.
             One row per (feature, level) combination.
         """
         self._check_fitted()
@@ -358,13 +343,6 @@ class SHAPRelativities:
             else:
                 agg = aggregate_continuous(feat, feat_vals, shap_col, weights)
 
-            if ci_method == "none":
-                agg = agg.with_columns([
-                    pl.lit(float("nan")).alias("lower_ci"),
-                    pl.lit(float("nan")).alias("upper_ci"),
-                    pl.lit(float("nan")).alias("relativity"),
-                ])
-
             # Normalisation
             if normalise_to == "base_level" and is_categorical:
                 base = base_levels.get(feat)
@@ -383,9 +361,11 @@ class SHAPRelativities:
                     base_key = str(base)
                     base_rows = agg.filter(pl.col("level") == base_key)
                     base_shap = base_rows["mean_shap"][0]
-                    agg = agg.with_columns(
-                        (pl.col("mean_shap") - base_shap).exp().alias("relativity")
-                    )
+                    agg = agg.with_columns([
+                        (pl.col("mean_shap") - base_shap).exp().alias("relativity"),
+                        pl.lit(float("nan")).alias("lower_ci"),
+                        pl.lit(float("nan")).alias("upper_ci"),
+                    ])
                 else:
                     agg = normalise_base_level(agg, base, ci_level=ci_level)
 
@@ -395,11 +375,14 @@ class SHAPRelativities:
                 if ci_method == "none":
                     total_weight = agg["exposure_weight"].sum()
                     portfolio_mean = float(
-                        (agg["mean_shap"] * agg["exposure_weight"]).sum() / total_weight
+                        (agg["mean_shap"] * agg["exposure_weight"]).sum()
+                        / total_weight
                     ) if total_weight > 0 else 0.0
-                    agg = agg.with_columns(
-                        (pl.col("mean_shap") - portfolio_mean).exp().alias("relativity")
-                    )
+                    agg = agg.with_columns([
+                        (pl.col("mean_shap") - portfolio_mean).exp().alias("relativity"),
+                        pl.lit(float("nan")).alias("lower_ci"),
+                        pl.lit(float("nan")).alias("upper_ci"),
+                    ])
                 else:
                     agg = normalise_mean(agg, ci_level=ci_level)
 
@@ -420,21 +403,20 @@ class SHAPRelativities:
         """
         Smoothed relativity curve for a continuous feature.
 
-        Parameters
-        ----------
-        feature : str
-            Feature name. Must be in continuous_features.
-        n_points : int
-            Number of points in the output curve (not the input data).
-        smooth_method : str
-            "loess": locally weighted regression (requires statsmodels).
-            "isotonic": isotonic regression (monotone curve).
-            "none": return raw per-observation relativities.
+        Args:
+            feature: Feature name. Must be in continuous_features.
+            n_points: Number of points in the output curve (not the input
+                data).
+            smooth_method: "loess" (locally weighted regression, requires
+                statsmodels), "isotonic" (monotone curve via isotonic
+                regression), or "none" (raw per-observation relativities).
 
-        Returns
-        -------
-        pl.DataFrame
-            Columns: feature_value, relativity, lower_ci, upper_ci.
+        Returns:
+            Polars DataFrame with columns: feature_value, relativity,
+            lower_ci, upper_ci.
+
+        Raises:
+            ValueError: If feature is not in X or smooth_method is unknown.
         """
         self._check_fitted()
 
@@ -512,30 +494,28 @@ class SHAPRelativities:
 
         Checks performed:
 
-        1. **reconstruction**: exp(shap.sum(1) + expected_value) should match
+        1. reconstruction: exp(shap.sum(1) + expected_value) should match
            model predictions within tolerance. Material failure here indicates
            the explainer was set up incorrectly.
 
-        2. **feature_coverage**: every feature in X should appear in the SHAP
+        2. feature_coverage: every feature in X should appear in the SHAP
            output. Currently always passes given TreeExplainer's API.
 
-        3. **sparse_levels**: warns if any categorical level has < 30
+        3. sparse_levels: warns if any categorical level has fewer than 30
            observations. CLT CIs will be unreliable for these levels.
 
-        Returns
-        -------
-        dict[str, CheckResult]
-            Keys: "reconstruction", "feature_coverage", "sparse_levels".
-            Each value is a CheckResult(passed, value, message).
+        Returns:
+            Dict with keys "reconstruction", "feature_coverage",
+            "sparse_levels". Each value is a CheckResult(passed, value,
+            message).
         """
         self._check_fitted()
 
         X_pd = _to_pandas(self._X)
 
         # Get model predictions for reconstruction check
-        try:
-            preds = self._model.predict(X_pd)
-        except TypeError:
+        preds = None
+        if self._model is not None:
             try:
                 preds = self._model.predict(X_pd)
             except Exception:
@@ -601,14 +581,10 @@ class SHAPRelativities:
         """
         Plot relativities as bar charts (categorical) or line charts (continuous).
 
-        Parameters
-        ----------
-        features : list[str] | None
-            Subset of features to plot. Defaults to all features.
-        show_ci : bool
-            Whether to show confidence intervals. Default True.
-        figsize : tuple[int, int]
-            Overall figure size.
+        Args:
+            features: Subset of features to plot. Defaults to all features.
+            show_ci: Whether to show confidence intervals. Default True.
+            figsize: Overall figure size.
         """
         self._check_fitted()
 
@@ -624,16 +600,15 @@ class SHAPRelativities:
             figsize=figsize,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """
         Serialisable representation of the fitted object.
 
         Stores SHAP values, expected value, feature names, and feature
         classification. Does not store the original model or X DataFrame.
 
-        Returns
-        -------
-        dict
+        Returns:
+            Dict suitable for JSON serialisation.
         """
         self._check_fitted()
         return {
@@ -651,21 +626,18 @@ class SHAPRelativities:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SHAPRelativities":
+    def from_dict(cls, data: dict[str, Any]) -> "SHAPRelativities":
         """
         Reconstruct a fitted SHAPRelativities from to_dict() output.
 
         The reconstructed object has no model attached, so validate() and
-        plot_relativities() still work but to_dict() can be called again.
+        plot_relativities() still work but fit() cannot be re-run.
 
-        Parameters
-        ----------
-        data : dict
-            Output of to_dict().
+        Args:
+            data: Output of to_dict().
 
-        Returns
-        -------
-        SHAPRelativities
+        Returns:
+            Fitted SHAPRelativities instance.
         """
         X = pl.DataFrame(data["X_values"])
         exposure = (

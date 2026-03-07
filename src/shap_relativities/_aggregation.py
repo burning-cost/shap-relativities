@@ -29,22 +29,15 @@ def aggregate_categorical(
     weight. These statistics are used downstream for normalisation and CI
     computation.
 
-    Parameters
-    ----------
-    feature : str
-        Feature name (used as a column label in the output).
-    feature_values : np.ndarray
-        Per-observation feature values (strings or integers).
-    shap_col : np.ndarray
-        Per-observation SHAP values in log space.
-    weights : np.ndarray
-        Per-observation exposure weights (e.g. earned years).
+    Args:
+        feature: Feature name (used as a column label in the output).
+        feature_values: Per-observation feature values (strings or integers).
+        shap_col: Per-observation SHAP values in log space.
+        weights: Per-observation exposure weights (e.g. earned years).
 
-    Returns
-    -------
-    pl.DataFrame
-        Columns: feature, level, mean_shap, shap_std, n_obs, exposure_weight.
-        One row per unique level.
+    Returns:
+        Polars DataFrame with columns: feature, level, mean_shap, shap_std,
+        n_obs, exposure_weight. One row per unique level.
     """
     # Build a Polars frame for groupby. Store levels as strings internally
     # so that mixed-type levels (int codes, string labels) concatenate cleanly.
@@ -82,7 +75,9 @@ def aggregate_categorical(
     result = agg.with_columns(pl.lit(feature).alias("feature"))
 
     # Reorder columns
-    return result.select(["feature", "level", "mean_shap", "shap_std", "n_obs", "exposure_weight"])
+    return result.select(
+        ["feature", "level", "mean_shap", "shap_std", "n_obs", "exposure_weight"]
+    )
 
 
 def aggregate_continuous(
@@ -94,26 +89,19 @@ def aggregate_continuous(
     """
     Return per-observation SHAP values for a continuous feature.
 
-    Unlike categorical aggregation, continuous features are not grouped —
+    Unlike categorical aggregation, continuous features are not grouped -
     each observation is returned as its own row. Smoothing and binning are
     handled separately (see extract_continuous_curve on the main class).
 
-    Parameters
-    ----------
-    feature : str
-        Feature name.
-    feature_values : np.ndarray
-        Per-observation feature values (floats or ints).
-    shap_col : np.ndarray
-        Per-observation SHAP values in log space.
-    weights : np.ndarray
-        Per-observation exposure weights.
+    Args:
+        feature: Feature name.
+        feature_values: Per-observation feature values (floats or ints).
+        shap_col: Per-observation SHAP values in log space.
+        weights: Per-observation exposure weights.
 
-    Returns
-    -------
-    pl.DataFrame
-        Columns: feature, level (float), mean_shap, shap_std (zeros),
-        n_obs (ones), exposure_weight.
+    Returns:
+        Polars DataFrame with columns: feature, level (float), mean_shap,
+        shap_std (zeros), n_obs (ones), exposure_weight.
     """
     n = len(feature_values)
     return pl.DataFrame({

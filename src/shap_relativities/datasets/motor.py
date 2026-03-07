@@ -13,7 +13,8 @@ match observed UK market patterns: skewed towards younger drivers for frequency,
 high NCD penetration in mature books, ABI group distribution weighted towards
 the lower-middle bands.
 
-The true frequency model is:
+The true frequency model is::
+
     log(lambda) = log(exposure) + beta_0
                 + beta_vehicle_group * vehicle_group_scaled
                 + beta_driver_age * f(driver_age)
@@ -21,7 +22,8 @@ The true frequency model is:
                 + beta_area * area_effect
                 + beta_convictions * has_convictions
 
-The true severity model is:
+The true severity model is::
+
     log(mu) = gamma_0
             + gamma_vehicle_group * vehicle_group_scaled
             + gamma_driver_age * young_driver_flag
@@ -46,7 +48,7 @@ import numpy as np
 import polars as pl
 
 # ---------------------------------------------------------------------------
-# True DGP parameters — these are what a correctly specified GLM should recover
+# True DGP parameters -- these are what a correctly specified GLM should recover
 # ---------------------------------------------------------------------------
 
 TRUE_FREQ_PARAMS: Final[dict[str, float]] = {
@@ -54,7 +56,7 @@ TRUE_FREQ_PARAMS: Final[dict[str, float]] = {
     "vehicle_group": 0.025,     # per ABI group unit (1-50)
     "driver_age_young": 0.55,   # additional log-frequency for drivers under 25
     "driver_age_old": 0.30,     # additional log-frequency for drivers over 70
-    "ncd_years": -0.12,         # per year of NCD — strong inverse relationship
+    "ncd_years": -0.12,         # per year of NCD; strong inverse relationship
     "area_B": 0.10,
     "area_C": 0.20,
     "area_D": 0.35,
@@ -69,7 +71,7 @@ TRUE_SEV_PARAMS: Final[dict[str, float]] = {
     "driver_age_young": 0.25,   # young drivers have higher severity too
 }
 
-# ABI area bands — loosely mapped to urban density / theft / accident rates
+# ABI area bands -- loosely mapped to urban density / theft / accident rates
 # A = rural/low risk (e.g. parts of Scotland), F = inner city high risk
 AREA_BANDS: Final[list[str]] = ["A", "B", "C", "D", "E", "F"]
 
@@ -83,6 +85,12 @@ def _driver_age_effect(ages: np.ndarray) -> np.ndarray:
 
     Young drivers (<25) have elevated frequency. Very old drivers (70+) also
     show elevated frequency. Mid-range (25-70) is the base.
+
+    Args:
+        ages: Array of driver ages.
+
+    Returns:
+        Array of log-frequency offsets.
     """
     effect = np.zeros(len(ages))
     effect[ages < 25] = TRUE_FREQ_PARAMS["driver_age_young"]
@@ -101,6 +109,13 @@ def _generate_policies(n: int, rng: np.random.Generator) -> dict:
     All policies span a 5-year window (2019-2023) with realistic inception
     date spread. Exposure is not all 1.0: ~8% are cancellations (short-term),
     ~5% are mid-term inceptions in the last year of the window.
+
+    Args:
+        n: Number of policies to generate.
+        rng: Numpy random generator instance.
+
+    Returns:
+        Dict of column name to array/list.
     """
     # Policy dates: 5 policy years, 2019-2023
     base_date = date(2019, 1, 1)
@@ -215,6 +230,13 @@ def _generate_policies(n: int, rng: np.random.Generator) -> dict:
 def _calculate_earned_exposure(inception_dates: list, expiry_dates: list) -> np.ndarray:
     """
     Calculate earned exposure in years for each policy row.
+
+    Args:
+        inception_dates: List of policy inception dates.
+        expiry_dates: List of policy expiry dates.
+
+    Returns:
+        Array of earned exposure in years, clipped to >= 0.
     """
     days = np.array([
         (exp - inc).days for inc, exp in zip(inception_dates, expiry_dates)
@@ -229,6 +251,14 @@ def _generate_claims(
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Generate claim counts and incurred amounts from the true DGP.
+
+    Args:
+        data: Policy characteristics dict from _generate_policies.
+        exposure: Earned exposure array.
+        rng: Numpy random generator instance.
+
+    Returns:
+        Tuple of (claim_count, incurred) arrays.
     """
     n = len(exposure)
 
@@ -238,7 +268,7 @@ def _generate_claims(
     conviction_points = np.asarray(data["conviction_points"])
     area = np.asarray(data["area"])
 
-    # --- Frequency predictor ---
+    # Frequency predictor
     log_lambda = (
         TRUE_FREQ_PARAMS["intercept"]
         + TRUE_FREQ_PARAMS["vehicle_group"] * vehicle_group
@@ -259,7 +289,7 @@ def _generate_claims(
     lambda_vals = np.exp(log_lambda)
     claim_count = rng.poisson(lambda_vals)
 
-    # --- Severity predictor ---
+    # Severity predictor
     log_mu = (
         TRUE_SEV_PARAMS["intercept"]
         + TRUE_SEV_PARAMS["vehicle_group"] * vehicle_group
@@ -297,46 +327,41 @@ def load_motor(
     Because the true parameters are known (see ``TRUE_FREQ_PARAMS`` and
     ``TRUE_SEV_PARAMS``), you can fit GLMs and validate coefficient recovery.
 
-    Parameters
-    ----------
-    n_policies : int
-        Number of policies to generate. Default 50,000 gives stable GLM
-        estimates. Use 5,000-10,000 for quick tests.
-    seed : int
-        Random seed for reproducibility. Changing this seed gives a different
-        but equally valid synthetic portfolio.
+    Args:
+        n_policies: Number of policies to generate. Default 50,000 gives
+            stable GLM estimates. Use 5,000-10,000 for quick tests.
+        seed: Random seed for reproducibility. Changing this seed gives a
+            different but equally valid synthetic portfolio.
 
-    Returns
-    -------
-    pl.DataFrame
-        One row per policy with columns:
+    Returns:
+        Polars DataFrame with one row per policy and columns:
 
-        - ``policy_id`` : Int64 — sequential identifier
-        - ``inception_date`` : Date — policy start
-        - ``expiry_date`` : Date — policy end (may be < 12 months for cancellations)
-        - ``accident_year`` : Int64 — year of inception (used for cohort splits)
-        - ``vehicle_age`` : Int64 — 0-20 years
-        - ``vehicle_group`` : Int64 — ABI group 1-50
-        - ``driver_age`` : Int64 — 17-85
-        - ``driver_experience`` : Int64 — years licensed
-        - ``ncd_years`` : Int64 — 0-5 (UK NCD scale)
-        - ``ncd_protected`` : Boolean
-        - ``conviction_points`` : Int64 — total endorsement points
-        - ``annual_mileage`` : Int64 — 2,000-30,000 miles
-        - ``area`` : Utf8 — ABI area band A-F
-        - ``occupation_class`` : Int64 — 1-5
-        - ``policy_type`` : Utf8 — 'Comp' or 'TPFT'
-        - ``claim_count`` : Int64 — number of claims in period
-        - ``incurred`` : Float64 — total incurred cost (0.0 if no claims)
-        - ``exposure`` : Float64 — earned years (< 1.0 for cancellations)
+        - ``policy_id``: Int64, sequential identifier
+        - ``inception_date``: Date, policy start
+        - ``expiry_date``: Date, policy end (may be < 12 months for
+          cancellations)
+        - ``accident_year``: Int64, year of inception (used for cohort splits)
+        - ``vehicle_age``: Int64, 0-20 years
+        - ``vehicle_group``: Int64, ABI group 1-50
+        - ``driver_age``: Int64, 17-85
+        - ``driver_experience``: Int64, years licensed
+        - ``ncd_years``: Int64, 0-5 (UK NCD scale)
+        - ``ncd_protected``: Boolean
+        - ``conviction_points``: Int64, total endorsement points
+        - ``annual_mileage``: Int64, 2,000-30,000 miles
+        - ``area``: Utf8, ABI area band A-F
+        - ``occupation_class``: Int64, 1-5
+        - ``policy_type``: Utf8, 'Comp' or 'TPFT'
+        - ``claim_count``: Int64, number of claims in period
+        - ``incurred``: Float64, total incurred cost (0.0 if no claims)
+        - ``exposure``: Float64, earned years (< 1.0 for cancellations)
 
-    Examples
-    --------
-    >>> df = load_motor(n_policies=10_000, seed=0)
-    >>> df.shape[0]
-    10000
-    >>> df["claim_count"].mean()  # roughly 6-8% claim rate
-    # ~0.07
+    Examples:
+        >>> df = load_motor(n_policies=10_000, seed=0)
+        >>> df.shape[0]
+        10000
+        >>> df["claim_count"].mean()  # roughly 6-8% claim rate
+        # ~0.07
     """
     rng = np.random.default_rng(seed)
 
