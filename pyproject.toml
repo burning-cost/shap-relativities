@@ -67,9 +67,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/burningcost/shap-relativities"
-Repository = "https://github.com/burningcost/shap-relativities"
-"Issue Tracker" = "https://github.com/burningcost/shap-relativities/issues"
+Homepage = "https://github.com/burning-cost/shap-relativities"
+Repository = "https://github.com/burning-cost/shap-relativities"
+"Issue Tracker" = "https://github.com/burning-cost/shap-relativities/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/shap_relativities"]

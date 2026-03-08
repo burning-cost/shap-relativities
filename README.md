@@ -14,7 +14,7 @@ So the GBM sits in a notebook. The GLM goes to production.
 
 **Output is a Polars DataFrame.** The library accepts either Polars or pandas DataFrames as input, and returns Polars. Pandas is a bridge dependency: shap's TreeExplainer uses it internally, so it is still installed with the `[ml]` extra.
 
-**Blog post:** [Extracting Rating Relativities from GBMs with SHAP](https://burningcost.github.io/2026/03/05/extracting-rating-relativities-from-gbms-with-shap/) - worked example, the maths, and a discussion of limitations for presenting to regulators and pricing committees.
+**Blog post:** [Extracting Rating Relativities from GBMs with SHAP](https://burning-cost.github.io/2026/03/05/extracting-rating-relativities-from-gbms-with-shap/) - worked example, the maths, and a discussion of limitations for presenting to regulators and pricing committees.
 
 ---
 
