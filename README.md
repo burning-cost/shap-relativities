@@ -22,6 +22,8 @@ So the GBM sits in a notebook. The GLM goes to production.
 
 ```bash
 uv add "shap-relativities[all]"
+# or
+pip install "shap-relativities[all]"
 ```
 
 Or pick what you need:
@@ -82,7 +84,7 @@ sr = SHAPRelativities(
 )
 sr.fit()
 
-rels = sr.extract_relativities(
+ rels = sr.extract_relativities(
     normalise_to="base_level",
     base_levels={"area_code": 0, "ncd_years": 0, "has_convictions": 0},
 )
@@ -121,7 +123,7 @@ rels = extract_relativities(
     X=X,
     exposure=df["exposure"],
     categorical_features=features,
-    base_levels={"area_code": 0, "ncd_years": 0, "has_convictions": 0},
+    base_levels={"area": "A", "ncd_years": 0},
 )
 ```
 
@@ -290,42 +292,37 @@ Frequency is Poisson with log-linear predictor. Severity is Gamma. `TRUE_FREQ_PA
 
 | Library | Description |
 |---------|-------------|
-| [insurance-interactions](https://github.com/burningcost/insurance-interactions) | Automated GLM interaction detection via CANN and NID scores |
-| [insurance-cv](https://github.com/burningcost/insurance-cv) | Walk-forward cross-validation respecting IBNR structure |
+| [insurance-interactions](https://github.com/burning-cost/insurance-interactions) | Automated GLM interaction detection via CANN and NID scores |
+| [insurance-cv](https://github.com/burning-cost/insurance-cv) | Walk-forward cross-validation respecting IBNR structure |
 
 **Uncertainty quantification**
 
 | Library | Description |
 |---------|-------------|
-| [insurance-conformal](https://github.com/burningcost/insurance-conformal) | Distribution-free prediction intervals for Tweedie models |
-| [bayesian-pricing](https://github.com/burningcost/bayesian-pricing) | Hierarchical Bayesian models for thin-data segments |
-| [credibility](https://github.com/burningcost/credibility) | Bühlmann-Straub credibility weighting |
+| [insurance-conformal](https://github.com/burning-cost/insurance-conformal) | Distribution-free prediction intervals for Tweedie models |
+| [bayesian-pricing](https://github.com/burning-cost/bayesian-pricing) | Hierarchical Bayesian models for thin-data segments |
+| [credibility](https://github.com/burning-cost/credibility) | Bühlmann-Straub credibility weighting |
 
 **Deployment and optimisation**
 
 | Library | Description |
 |---------|-------------|
-| [rate-optimiser](https://github.com/burningcost/rate-optimiser) | Constrained rate change optimisation with FCA PS21/5 compliance |
-| [insurance-demand](https://github.com/burningcost/insurance-demand) | Conversion, retention, and price elasticity modelling |
+| [insurance-deploy](https://github.com/burning-cost/insurance-deploy) | Champion/challenger framework with ENBP audit logging |
+| [insurance-elasticity](https://github.com/burning-cost/insurance-elasticity) | Causal price elasticity via Double Machine Learning |
+| [rate-optimiser](https://github.com/burning-cost/rate-optimiser) | Constrained rate change optimisation with FCA PS21/5 compliance |
 
 **Governance**
 
 | Library | Description |
 |---------|-------------|
-| [insurance-fairness](https://github.com/burningcost/insurance-fairness) | Proxy discrimination auditing for UK insurance models |
-| [insurance-causal](https://github.com/burningcost/insurance-causal) | Double Machine Learning for causal pricing inference |
-| [insurance-monitoring](https://github.com/burningcost/insurance-monitoring) | Model monitoring: PSI, A/E ratios, Gini drift test |
+| [insurance-fairness](https://github.com/burning-cost/insurance-fairness) | Proxy discrimination auditing for UK insurance models |
+| [insurance-validation](https://github.com/burning-cost/insurance-validation) | PRA SS1/23 model validation reports |
+| [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model monitoring: PSI, A/E ratios, Gini drift test |
 
-**Spatial**
-
-| Library | Description |
-|---------|-------------|
-| [insurance-spatial](https://github.com/burningcost/insurance-spatial) | BYM2 spatial territory ratemaking for UK personal lines |
-
-[All libraries →](https://burningcost.github.io)
+[All libraries and blog posts →](https://burning-cost.github.io)
 
 ---
 
 ## Licence
 
-MIT. Part of the [Burning Cost](https://github.com/burningcost) insurance pricing toolkit.
+MIT. Part of the [Burning Cost](https://github.com/burning-cost) insurance pricing toolkit.
