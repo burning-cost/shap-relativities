@@ -85,7 +85,7 @@ sr = SHAPRelativities(
 )
 sr.fit()
 
- rels = sr.extract_relativities(
+rels = sr.extract_relativities(
     normalise_to="base_level",
     base_levels={"area_code": 0, "ncd_years": 0, "has_convictions": 0},
 )
