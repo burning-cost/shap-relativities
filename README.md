@@ -346,6 +346,15 @@ The benchmark measures these metrics on the held-out test set and compares Poiss
 
 ---
 
+
+## Related Libraries
+
+| Library | What it does |
+|---------|-------------|
+| [insurance-cv](https://github.com/burning-cost/insurance-cv) | Temporal cross-validation for insurance models — use walk-forward splits when evaluating GBMs before extracting relativities |
+| [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model monitoring with PSI, A/E ratios, and Gini drift — tracks whether SHAP-derived relativities stay valid after deployment |
+| [insurance-interactions](https://github.com/burning-cost/insurance-interactions) | Automated GLM interaction detection — use alongside SHAP to identify where the GLM's multiplicative structure breaks down |
+
 ## Licence
 
 MIT. Part of the [Burning Cost](https://github.com/burning-cost) insurance pricing toolkit.
