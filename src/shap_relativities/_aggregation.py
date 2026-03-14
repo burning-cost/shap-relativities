@@ -104,11 +104,14 @@ def aggregate_continuous(
         shap_std (zeros), n_obs (ones), exposure_weight.
     """
     n = len(feature_values)
+    # Cast level to str and n_obs to UInt32 so the schema matches
+    # aggregate_categorical() output. This allows pl.concat(how="diagonal")
+    # to stack both feature types without type conflicts.
     return pl.DataFrame({
         "feature": [feature] * n,
-        "level": feature_values.astype(float),
+        "level": feature_values.astype(str),
         "mean_shap": shap_col.astype(float),
         "shap_std": np.zeros(n),
-        "n_obs": np.ones(n),
+        "n_obs": np.ones(n, dtype=np.uint32),
         "exposure_weight": weights.astype(float),
     })
