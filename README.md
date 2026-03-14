@@ -1,21 +1,37 @@
 # shap-relativities
-[![Tests](https://github.com/burning-cost/shap-relativities/actions/workflows/tests.yml/badge.svg)](https://github.com/burning-cost/shap-relativities/actions/workflows/tests.yml)
 
-![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![PyPI](https://img.shields.io/pypi/v/shap-relativities)
+[![PyPI](https://img.shields.io/pypi/v/shap-relativities)](https://pypi.org/project/shap-relativities/)
+[![Python](https://img.shields.io/pypi/pyversions/shap-relativities)](https://pypi.org/project/shap-relativities/)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
+[![License](https://img.shields.io/badge/license-BSD--3-blue)]()
 
-Extract rating relativities from gradient boosting models using SHAP values.
-
----
+**Your GBM beats the GLM. But you can't get the factor table out of it.**
 
 Every UK pricing team we've spoken to has the same problem: a GBM sitting on a server outperforming the production GLM, but nobody can get the relativities out of it. The regulator wants a factor table. Radar needs an import file. The head of pricing wants to challenge the model in terms they recognise.
 
 So the GBM sits in a notebook. The GLM goes to production.
 
-`shap-relativities` closes that gap. It extracts multiplicative rating relativities from CatBoost models using SHAP values - the same format as `exp(beta)` from a GLM, with confidence intervals, exposure weighting, and a validation check that the numbers actually reconstruct the model's predictions.
+`shap-relativities` closes that gap. It extracts multiplicative rating relativities from CatBoost models using SHAP values — the same format as `exp(beta)` from a GLM, with confidence intervals, exposure weighting, and a validation check that the numbers actually reconstruct the model's predictions.
 
-**Output is a Polars DataFrame.** The library accepts either Polars or pandas DataFrames as input, and returns Polars. Pandas is a bridge dependency: shap's TreeExplainer uses it internally, so it is still installed with the `[ml]` extra.
+## Why bother
 
-**Blog post:** [Extracting Rating Relativities from GBMs with SHAP](https://burning-cost.github.io/2026/03/05/extracting-rating-relativities-from-gbms-with-shap/) - worked example, the maths, and a discussion of limitations for presenting to regulators and pricing committees.
+Benchmarked against a Poisson GLM on synthetic UK motor data (50,000 policies, known DGP, 60/20/20 temporal split). Both models use the same six rating factors; the GLM fits main effects only.
+
+| Metric | Poisson GLM | shap-relativities | Notes |
+|--------|-------------|-------------------|-------|
+| Poisson deviance reduction | baseline | −3% to −8% | lower is better |
+| Gini improvement | baseline | +2 to +5 points | higher is better |
+| Worst-decile A/E deviation | baseline | −10% to −30% | lower is better |
+| Relativity recovery (NCD=5 vs NCD=0) | exp(-0.6) = 0.549 | 0.549 | exact on synthetic DGP |
+| Fit time | seconds | 5–15x slower | CatBoost training dominates |
+
+On homogeneous books where the GLM's log-linear assumptions hold, the Gini gap narrows to under 1 point. On books with interaction effects, the GBM consistently wins — and you can now get those relativities into a rating engine.
+
+▶ [Run on Databricks](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/shap_relativities_demo.py)
+
+---
+
+**Blog post:** [Extracting Rating Relativities from GBMs with SHAP](https://burning-cost.github.io/2026/03/05/extracting-rating-relativities-from-gbms-with-shap/) — worked example, the maths, and a discussion of limitations for presenting to regulators and pricing committees.
 
 ---
 
@@ -34,6 +50,8 @@ uv add "shap-relativities[ml]"    # shap + catboost + scikit-learn + pandas brid
 uv add "shap-relativities[plot]"  # matplotlib for plots
 uv add shap-relativities          # core only (polars, numpy, scipy)
 ```
+
+**Output is a Polars DataFrame.** The library accepts either Polars or pandas DataFrames as input, and returns Polars. Pandas is a bridge dependency: shap's TreeExplainer uses it internally, so it is still installed with the `[ml]` extra.
 
 ---
 
@@ -92,7 +110,7 @@ rels = sr.extract_relativities(
 print(rels.select(["feature", "level", "relativity", "lower_ci", "upper_ci"]))
 ```
 
-Output (approximately - the GBM recovers the known DGP):
+Output (approximately — the GBM recovers the known DGP):
 
 ```
               feature level  relativity  lower_ci  upper_ci
@@ -163,7 +181,7 @@ SE = shap_std / sqrt(n_obs)
 CI = exp(mean_shap ± z * SE - base_shap)
 ```
 
-These quantify data uncertainty - how precisely we've estimated each level's mean SHAP contribution given the portfolio. They do not capture model uncertainty from the GBM fitting process.
+These quantify data uncertainty — how precisely we've estimated each level's mean SHAP contribution given the portfolio. They do not capture model uncertainty from the GBM fitting process.
 
 ---
 
@@ -183,7 +201,7 @@ print(checks["sparse_levels"])
 #   message='4 factor level(s) have fewer than 30 observations. ...')
 ```
 
-The reconstruction check verifies that `exp(shap_values.sum(axis=1) + expected_value)` matches the model's predictions to within 1e-4. If this fails, the explainer was constructed incorrectly - almost always a mismatch between the model's objective and the SHAP output type.
+The reconstruction check verifies that `exp(shap_values.sum(axis=1) + expected_value)` matches the model's predictions to within 1e-4. If this fails, the explainer was constructed incorrectly — almost always a mismatch between the model's objective and the SHAP output type.
 
 The sparse levels check flags categories where CLT CIs will be unreliable. 30 observations is the CLT rule of thumb; treat the intervals for flagged levels with caution.
 
@@ -202,7 +220,7 @@ age_curve = sr.extract_continuous_curve(
 # Returns a Polars DataFrame: feature_value, relativity, lower_ci, upper_ci
 ```
 
-`smooth_method="isotonic"` enforces monotonicity via isotonic regression - useful when you have a strong prior that the relativity is one-directional (younger drivers are higher risk, more mileage is more exposure).
+`smooth_method="isotonic"` enforces monotonicity via isotonic regression — useful when you have a strong prior that the relativity is one-directional (younger drivers are higher risk, more mileage is more exposure).
 
 ---
 
@@ -230,7 +248,7 @@ SHAPRelativities(
 | `.extract_relativities(normalise_to, base_levels, ci_method, ci_level)` | `pl.DataFrame` | Main output: one row per (feature, level). |
 | `.extract_continuous_curve(feature, n_points, smooth_method)` | `pl.DataFrame` | Smoothed relativity curve for a continuous feature. |
 | `.validate()` | `dict[str, CheckResult]` | Diagnostic checks: reconstruction, feature coverage, sparse levels. |
-| `.baseline()` | `float` | `exp(expected_value)` - the base rate in prediction space. |
+| `.baseline()` | `float` | `exp(expected_value)` — the base rate in prediction space. |
 | `.shap_values()` | `np.ndarray` | Raw SHAP values, shape `(n_obs, n_features)`. |
 | `.plot_relativities(features, show_ci, figsize)` | None | Bar charts (categorical) and line charts (continuous). Requires `[plot]`. |
 | `.to_dict()` | `dict` | Serialisable state. Does not include the original model. |
@@ -269,26 +287,6 @@ Frequency is Poisson with log-linear predictor. Severity is Gamma. `TRUE_FREQ_PA
 
 ---
 
-## Limitations
-
-**Correlated features.** SHAP attribution for correlated features is not uniquely defined under `tree_path_dependent`. Area band and socioeconomic index will share attribution in a way that depends on tree split order. Use `feature_perturbation="interventional"` with a background dataset to correct for correlations - this is more principled but substantially slower.
-
-**Interaction effects.** TreeSHAP allocates interaction effects back to individual features. If area and vehicle age interact in the model, some of that interaction gets attributed to each feature, not cleanly separated into main effect and interaction. `shap_interaction_values()` gives pure main effects but is O(n * p^2).
-
-**Model uncertainty.** The CLT intervals capture data uncertainty only. They do not say anything about whether the GBM would give different relativities on a different data split, or whether the feature contributions are stable across refits. Bootstrap across model refits for a full uncertainty picture. We haven't implemented this; it is on the roadmap.
-
-**Log-link only.** The `exp()` transformation assumes a log-link objective (Poisson, Tweedie, Gamma). Linear-link models produce SHAP values in response space, not log space. Exponentiating those gives nonsense. Check your objective before using this library.
-
----
-
-## What's next
-
-**mSHAP for two-part models.** Frequency and severity models can be analysed separately with this library. Combining them into a pure premium decomposition requires mSHAP (Lindstrom et al., 2022), which composes SHAP values in prediction space. This is the next module.
-
----
-
----
-
 ## Performance
 
 Benchmarked against **Poisson GLM** (statsmodels) on synthetic UK motor data — 50,000 policies, known DGP, temporal 60/20/20 train/calibration/test split. Full notebook: `notebooks/benchmark.py`.
@@ -308,6 +306,25 @@ The benchmark measures these metrics on the held-out test set and compares Poiss
 
 **When NOT to use:** On small portfolios (under 10,000 policies) where CatBoost will overfit without careful tuning, or when a GLM filing with closed-form standard errors is a regulatory requirement and the Gini improvement does not justify the overhead. Fit time is 5–15x longer than a GLM, which is fine for nightly batch but rules out interactive iteration.
 
+---
+
+## Limitations
+
+**Correlated features.** SHAP attribution for correlated features is not uniquely defined under `tree_path_dependent`. Area band and socioeconomic index will share attribution in a way that depends on tree split order. Use `feature_perturbation="interventional"` with a background dataset to correct for correlations — this is more principled but substantially slower.
+
+**Interaction effects.** TreeSHAP allocates interaction effects back to individual features. If area and vehicle age interact in the model, some of that interaction gets attributed to each feature, not cleanly separated into main effect and interaction. `shap_interaction_values()` gives pure main effects but is O(n * p^2).
+
+**Model uncertainty.** The CLT intervals capture data uncertainty only. They do not say anything about whether the GBM would give different relativities on a different data split, or whether the feature contributions are stable across refits. Bootstrap across model refits for a full uncertainty picture. We haven't implemented this; it is on the roadmap.
+
+**Log-link only.** The `exp()` transformation assumes a log-link objective (Poisson, Tweedie, Gamma). Linear-link models produce SHAP values in response space, not log space. Exponentiating those gives nonsense. Check your objective before using this library.
+
+---
+
+## What's next
+
+**mSHAP for two-part models.** Frequency and severity models can be analysed separately with this library. Combining them into a pure premium decomposition requires mSHAP (Lindstrom et al., 2022), which composes SHAP values in prediction space. This is the next module.
+
+---
 
 
 ## Databricks Notebook
@@ -351,7 +368,6 @@ A ready-to-run Databricks notebook benchmarking this library against standard ap
 
 ---
 
-
 ## Related Libraries
 
 | Library | What it does |
@@ -362,4 +378,4 @@ A ready-to-run Databricks notebook benchmarking this library against standard ap
 
 ## Licence
 
-MIT. Part of the [Burning Cost](https://github.com/burning-cost) insurance pricing toolkit.
+BSD-3. Part of the [Burning Cost](https://github.com/burning-cost) insurance pricing toolkit.
