@@ -124,7 +124,7 @@ rels = extract_relativities(
     X=X,
     exposure=df["exposure"],
     categorical_features=features,
-    base_levels={"area": "A", "ncd_years": 0},
+    base_levels={"area_code": 0, "ncd_years": 0, "has_convictions": 0},
 )
 ```
 
@@ -247,8 +247,8 @@ rels = extract_relativities(
     model=model,
     X=X,
     exposure=df["exposure"],
-    categorical_features=["area", "ncd_years"],
-    base_levels={"area": "A", "ncd_years": 0},
+    categorical_features=["area_code", "ncd_years", "has_convictions"],
+    base_levels={"area_code": 0, "ncd_years": 0, "has_convictions": 0},
 )
 ```
 
