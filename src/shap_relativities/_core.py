@@ -388,6 +388,17 @@ class SHAPRelativities:
 
             parts.append(agg)
 
+        # Cast the 'level' column to Utf8 in every part before concat.
+        # Categorical features produce level as Utf8; continuous features
+        # produce level as Float64. pl.concat with how="diagonal" cannot
+        # unify mismatched types for the same column name, so we normalise
+        # here rather than requiring callers to pre-cast their feature columns.
+        parts = [
+            p.with_columns(pl.col("level").cast(pl.Utf8))
+            if "level" in p.columns else p
+            for p in parts
+        ]
+
         result = pl.concat(parts, how="diagonal")
 
         # Ensure standard column order
