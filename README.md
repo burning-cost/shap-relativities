@@ -339,7 +339,7 @@ The benchmark measures these metrics on the held-out test set and compares Poiss
 | Library | Description |
 |---------|-------------|
 | [insurance-fairness](https://github.com/burning-cost/insurance-fairness) | Proxy discrimination auditing for UK insurance models |
-| [insurance-validation](https://github.com/burning-cost/insurance-validation) | PRA SS1/23 model validation reports |
+| [insurance-governance](https://github.com/burning-cost/insurance-governance) | PRA SS1/23 model validation reports |
 | [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model monitoring: PSI, A/E ratios, Gini drift test |
 
 [All libraries and blog posts →](https://burning-cost.github.io)
