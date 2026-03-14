@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "shap-relativities"
+abstract: >
+  Extract GLM-style rating relativities from GBM models using SHAP values.
+  Converts CatBoost gradient boosting output into the factor tables that
+  actuarial pricing teams need, with Polars backend for production performance.
+authors:
+  - name: "Burning Cost"
+    website: "https://burning-cost.github.io"
+repository-code: "https://github.com/burning-cost/shap-relativities"
+license: MIT
+keywords:
+  - insurance-pricing
+  - actuarial
+  - shap
+  - gradient-boosting
+  - catboost
+  - rating-relativities
+  - gbm
+  - interpretable-ml
