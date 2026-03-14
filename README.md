@@ -309,6 +309,11 @@ The benchmark measures these metrics on the held-out test set and compares Poiss
 **When NOT to use:** On small portfolios (under 10,000 policies) where CatBoost will overfit without careful tuning, or when a GLM filing with closed-form standard errors is a regulatory requirement and the Gini improvement does not justify the overhead. Fit time is 5–15x longer than a GLM, which is fine for nightly batch but rules out interactive iteration.
 
 
+
+## Databricks Notebook
+
+A ready-to-run Databricks notebook benchmarking this library against standard approaches is available in [burning-cost-examples](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/shap_relativities_demo.py).
+
 ## Other Burning Cost libraries
 
 **Model building**
