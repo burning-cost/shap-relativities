@@ -401,7 +401,7 @@ class SHAPRelativities:
 
         result = pl.concat(parts, how="diagonal")
 
-        # Ensure standard column order
+        # Ensure standard column order (wsq_weight is internal, not exported)
         available = [c for c in _RELATIVITY_COLUMNS if c in result.columns]
         return result.select(available)
 
@@ -442,6 +442,7 @@ class SHAPRelativities:
             else np.ones(len(self._X))
         )
 
+        # Exposure-weighted mean over the actual data distribution
         portfolio_mean = np.average(shap_col, weights=weights)
         relativities = np.exp(shap_col - portfolio_mean)
 
@@ -461,7 +462,18 @@ class SHAPRelativities:
             ir = IsotonicRegression(out_of_bounds="clip")
             ir.fit(feat_vals, shap_col, sample_weight=weights)
             smoothed_shap = ir.predict(grid)
-            smoothed_rel = np.exp(smoothed_shap - portfolio_mean)
+
+            # P1-4 fix: normalise the smoothed curve so the exposure-weighted
+            # geometric mean of relativities = 1.0.
+            # The smooth is on the data, evaluated on a uniform grid. Subtracting
+            # portfolio_mean (computed on the data distribution) would be correct
+            # only if the grid were distributed like the data — it isn't.
+            # Instead, compute the data-distribution-weighted mean of the smoothed
+            # curve at the original data points, then use that as the reference.
+            smoothed_at_data = ir.predict(feat_vals)
+            weighted_mean_smoothed = np.average(smoothed_at_data, weights=weights)
+            smoothed_rel = np.exp(smoothed_shap - weighted_mean_smoothed)
+
             return pl.DataFrame({
                 "feature_value": grid,
                 "relativity": smoothed_rel,
@@ -472,11 +484,22 @@ class SHAPRelativities:
         elif smooth_method == "loess":
             try:
                 from statsmodels.nonparametric.smoothers_lowess import lowess
-                smoothed = lowess(
+
+                smoothed_shap = lowess(
                     shap_col, feat_vals, frac=0.3, it=3,
                     xvals=grid, is_sorted=False,
                 )
-                smoothed_rel = np.exp(smoothed - portfolio_mean)
+
+                # P1-4 fix: compute the smoothed values at original data points
+                # so the normalisation is data-distribution-weighted, not
+                # grid-uniform. Use the same lowess parameters.
+                smoothed_at_data = lowess(
+                    shap_col, feat_vals, frac=0.3, it=3,
+                    xvals=feat_vals, is_sorted=False,
+                )
+                weighted_mean_smoothed = np.average(smoothed_at_data, weights=weights)
+                smoothed_rel = np.exp(smoothed_shap - weighted_mean_smoothed)
+
                 return pl.DataFrame({
                     "feature_value": grid,
                     "relativity": smoothed_rel,
@@ -650,7 +673,13 @@ class SHAPRelativities:
         Returns:
             Fitted SHAPRelativities instance.
         """
-        X = pl.DataFrame(data["X_values"])
+        # P1-2 fix: use feature_names to control column ordering in X.
+        # Without this, tools that sort JSON object keys (REST APIs, some
+        # pretty-printers) reorder X_values, misaligning columns with the
+        # shap_values matrix columns.
+        feature_names: list[str] = data.get("feature_names", list(data["X_values"].keys()))
+        X = pl.DataFrame({k: data["X_values"][k] for k in feature_names})
+
         exposure = (
             np.array(data["exposure"]) if data.get("exposure") is not None
             else None

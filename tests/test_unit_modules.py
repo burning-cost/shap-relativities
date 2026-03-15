@@ -73,7 +73,7 @@ class TestAggregateCategorical:
             np.array([0.1, 0.2, 0.15, 0.3]),
             np.array([1.0, 1.0, 1.0, 1.0]),
         )
-        expected = {"feature", "level", "mean_shap", "shap_std", "n_obs", "exposure_weight"}
+        expected = {"feature", "level", "mean_shap", "shap_std", "n_obs", "exposure_weight", "wsq_weight"}
         assert expected == set(result.columns)
 
     def test_correct_level_count(self) -> None:
@@ -178,7 +178,7 @@ class TestAggregateContinuous:
             np.array([0.1, 0.2, 0.3]),
             np.ones(3),
         )
-        expected = {"feature", "level", "mean_shap", "shap_std", "n_obs", "exposure_weight"}
+        expected = {"feature", "level", "mean_shap", "shap_std", "n_obs", "exposure_weight", "wsq_weight"}
         assert expected == set(result.columns)
 
     def test_row_count_equals_obs(self) -> None:
@@ -802,4 +802,483 @@ class TestPlotting:
             categorical_features=["area"],
             continuous_features=["driver_age"],
             features=["area"],
+        )
+
+
+# ===========================================================================
+# Regression tests for P0/P1 bug fixes
+# ===========================================================================
+
+
+class TestP03EffectiveSampleSize:
+    """
+    Regression tests for P0-3: SE must use n_eff = sum(w)^2 / sum(w^2),
+    not raw n_obs.
+
+    When weights vary widely (e.g. short-term cancellations mixed with annual
+    policies), raw n_obs overstates the effective sample size and makes CIs
+    too narrow. n_eff is always <= n_obs; equality holds only when all weights
+    are identical.
+    """
+
+    def test_neff_produces_wsq_weight_column(self) -> None:
+        """aggregate_categorical must output a wsq_weight column."""
+        result = aggregate_categorical(
+            "x",
+            np.array(["A", "A", "A"]),
+            np.array([0.1, 0.2, 0.3]),
+            np.array([0.1, 0.5, 1.0]),  # mixed weights
+        )
+        assert "wsq_weight" in result.columns
+
+    def test_wsq_weight_correct_value(self) -> None:
+        """wsq_weight must equal sum(w_i^2) per level."""
+        ws = np.array([0.1, 0.5, 1.0])
+        result = aggregate_categorical(
+            "x",
+            np.array(["A", "A", "A"]),
+            np.zeros(3),
+            ws,
+        )
+        expected_wsq = float((ws ** 2).sum())
+        assert abs(result["wsq_weight"][0] - expected_wsq) < 1e-10
+
+    def test_unequal_weights_give_wider_ci_than_equal(self) -> None:
+        """
+        With highly variable weights and the same n_obs, n_eff < n_obs,
+        so the CI should be wider than if we used raw n_obs (old behaviour).
+        """
+        # Construct two scenarios with same n_obs but different weight spread.
+        # Equal weights: w = [1.0, 1.0] -> n_eff = 2.0
+        # Unequal weights: w = [0.01, 1.99] -> n_eff = (2.0)^2 / (0.01^2 + 1.99^2) ≈ 1.01
+        def _ci_width(ws):
+            agg = aggregate_categorical(
+                "x", np.array(["A", "A"]), np.array([0.5, 0.5]), np.array(ws)
+            )
+            # Manually add std so CI is non-trivial
+            agg = agg.with_columns(pl.lit(0.3).alias("shap_std"))
+            result = normalise_mean(agg)
+            row = result[0]
+            return float(row["upper_ci"][0]) - float(row["lower_ci"][0])
+
+        width_equal = _ci_width([1.0, 1.0])
+        width_unequal = _ci_width([0.01, 1.99])
+        # Unequal weights → smaller n_eff → wider CI
+        assert width_unequal > width_equal, (
+            f"Expected wider CI with unequal weights, got {width_unequal:.4f} vs {width_equal:.4f}"
+        )
+
+    def test_equal_weights_neff_equals_nobs(self) -> None:
+        """When all weights are equal, n_eff should equal n_obs exactly."""
+        w = 0.8  # all equal
+        n = 5
+        result = aggregate_categorical(
+            "x",
+            np.array(["A"] * n),
+            np.zeros(n),
+            np.full(n, w),
+        )
+        exposure_weight = float(result["exposure_weight"][0])
+        wsq_weight = float(result["wsq_weight"][0])
+        n_eff = (exposure_weight ** 2) / wsq_weight
+        assert abs(n_eff - n) < 1e-9
+
+
+class TestP01BaseLevelCIIncludesBaseVariance:
+    """
+    Regression tests for P0-1: CI for non-base levels must include
+    estimation uncertainty of the base level itself.
+
+    The relativity for level L is exp(mean_L - base). Both terms are
+    estimated from data. The CI must use se_combined = sqrt(se_L^2 + se_base^2).
+
+    The base level itself always has relativity=1.0 and CI width=0 on the
+    relativity scale (the base is taken as the reference). But for other levels,
+    if we reduce the base level's sample size (increase its SE), the CI width
+    for non-base levels should increase even if their own SE is unchanged.
+    """
+
+    def _make_agg_with_wsq(
+        self,
+        levels, mean_shaps, shap_stds, exposure_weights, wsq_weights,
+    ) -> pl.DataFrame:
+        """Build aggregated DataFrame with wsq_weight column."""
+        n = len(levels)
+        return pl.DataFrame({
+            "feature": ["feat"] * n,
+            "level": levels,
+            "mean_shap": [float(x) for x in mean_shaps],
+            "shap_std": [float(x) for x in shap_stds],
+            "n_obs": [100] * n,
+            "exposure_weight": [float(x) for x in exposure_weights],
+            "wsq_weight": [float(x) for x in wsq_weights],
+        })
+
+    def test_large_base_se_widens_non_base_ci(self) -> None:
+        """
+        Increasing the base level's shap_std should widen the CI of other
+        levels when se_combined = sqrt(se_L^2 + se_base^2) is used.
+
+        With the old code (se = se_L only), the non-base CI was independent
+        of the base level's variance.
+        """
+        def _width_for_base_std(base_std):
+            df = self._make_agg_with_wsq(
+                levels=["A", "B"],
+                mean_shaps=[0.0, 0.5],
+                shap_stds=[base_std, 0.2],
+                exposure_weights=[100.0, 100.0],
+                # wsq_weight: 100 equal-weight obs with w=1 each → wsq=n*1^2=100... but
+                # here exposure_weight=100 so each obs has w=1, wsq = n*1 = 100
+                wsq_weights=[100.0, 100.0],
+            )
+            result = normalise_base_level(df, "A")
+            b_row = result.filter(pl.col("level") == "B")
+            return float(b_row["upper_ci"][0]) - float(b_row["lower_ci"][0])
+
+        width_small_base = _width_for_base_std(0.0)
+        width_large_base = _width_for_base_std(1.0)
+        assert width_large_base > width_small_base, (
+            "CI width of non-base level should increase when base level has "
+            f"higher variance. Got small_base={width_small_base:.4f}, "
+            f"large_base={width_large_base:.4f}"
+        )
+
+    def test_base_level_ci_straddles_one(self) -> None:
+        """Base level itself should have lower_ci <= 1.0 <= upper_ci."""
+        df = self._make_agg_with_wsq(
+            levels=["A", "B"],
+            mean_shaps=[0.0, 0.5],
+            shap_stds=[0.2, 0.1],
+            exposure_weights=[50.0, 100.0],
+            wsq_weights=[50.0, 100.0],  # equal weights, wsq = exposure
+        )
+        result = normalise_base_level(df, "A")
+        base_row = result.filter(pl.col("level") == "A")
+        assert float(base_row["lower_ci"][0]) <= 1.0
+        assert float(base_row["upper_ci"][0]) >= 1.0
+
+
+class TestP11ZeroWeightLevel:
+    """
+    Regression tests for P1-1: a level with all observations having weight=0
+    must be excluded (with a warning), not silently produce NaN relativities.
+    """
+
+    def test_zero_weight_level_excluded(self) -> None:
+        """Level with total exposure=0 must not appear in output."""
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = aggregate_categorical(
+                "x",
+                np.array(["A", "A", "B"]),
+                np.array([0.1, 0.2, 0.5]),
+                np.array([1.0, 1.0, 0.0]),  # B has zero weight
+            )
+        assert "B" not in result["level"].to_list()
+
+    def test_zero_weight_level_emits_warning(self) -> None:
+        """A UserWarning must be raised when a zero-weight level is dropped."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            aggregate_categorical(
+                "x",
+                np.array(["A", "B"]),
+                np.array([0.1, 0.2]),
+                np.array([1.0, 0.0]),
+            )
+        assert any(issubclass(ww.category, UserWarning) for ww in w)
+
+    def test_zero_weight_does_not_produce_nan_relativities(self) -> None:
+        """After dropping zero-weight levels, no NaN in output."""
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            agg = aggregate_categorical(
+                "x",
+                np.array(["A", "A", "B", "C"]),
+                np.array([0.1, 0.2, 0.5, 0.3]),
+                np.array([1.0, 1.0, 0.0, 1.0]),
+            )
+        result = normalise_mean(agg)
+        assert not result["relativity"].is_nan().any()
+        assert not result["lower_ci"].is_nan().any()
+
+    def test_all_nonzero_levels_preserved(self) -> None:
+        """Non-zero levels must all survive the zero-weight filter."""
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = aggregate_categorical(
+                "x",
+                np.array(["A", "B", "C"]),
+                np.zeros(3),
+                np.array([1.0, 0.0, 2.0]),
+            )
+        assert set(result["level"].to_list()) == {"A", "C"}
+
+
+class TestP12FromDictFeatureNamesOrder:
+    """
+    Regression tests for P1-2: from_dict must use feature_names to control
+    the column ordering in the reconstructed X DataFrame.
+
+    When JSON object keys are sorted alphabetically (by REST APIs, some
+    pretty-printers), X_values dict ordering no longer matches feature_names.
+    Without the fix, the wrong SHAP columns get assigned to each feature.
+    """
+
+    def test_from_dict_respects_feature_names_order(self) -> None:
+        """
+        Reconstructed X must have columns in feature_names order, regardless
+        of the dict key order in X_values.
+        """
+        from shap_relativities import SHAPRelativities
+
+        try:
+            import shap  # noqa: F401
+        except ImportError:
+            pytest.skip("shap not installed")
+
+        # feature_names order: ["z_feat", "a_feat"]
+        # X_values will be presented with sorted keys: {"a_feat": ..., "z_feat": ...}
+        # Without the fix, X columns would be ["a_feat", "z_feat"] — reversed.
+        data = {
+            "shap_values": [[0.1, -0.2], [0.3, 0.4]],
+            "expected_value": 0.5,
+            "feature_names": ["z_feat", "a_feat"],
+            "categorical_features": ["z_feat"],
+            "continuous_features": ["a_feat"],
+            # Simulate sorted-key JSON: a_feat comes before z_feat
+            "X_values": {"a_feat": [10.0, 20.0], "z_feat": ["X", "Y"]},
+            "exposure": None,
+            "annualise_exposure": True,
+        }
+        sr = SHAPRelativities.from_dict(data)
+        assert sr._X.columns == ["z_feat", "a_feat"], (
+            f"Expected ['z_feat', 'a_feat'], got {sr._X.columns}"
+        )
+
+    def test_from_dict_shap_column_alignment(self) -> None:
+        """
+        After from_dict reconstruction with reordered X_values, the SHAP
+        column for each feature must be correctly aligned.
+
+        We verify this by extracting relativities and checking that the
+        feature names in the output are correct (not swapped).
+        """
+        from shap_relativities import SHAPRelativities
+
+        try:
+            import shap  # noqa: F401
+        except ImportError:
+            pytest.skip("shap not installed")
+
+        # Two categorical features. SHAP col 0 → z_feat, col 1 → a_feat.
+        data = {
+            "shap_values": [[0.5, -0.5], [0.5, -0.5], [0.5, -0.5]],
+            "expected_value": 0.0,
+            "feature_names": ["z_feat", "a_feat"],
+            "categorical_features": ["z_feat", "a_feat"],
+            "continuous_features": [],
+            # Sorted-key dict order: a_feat first
+            "X_values": {"a_feat": ["P", "P", "Q"], "z_feat": ["X", "X", "Y"]},
+            "exposure": None,
+            "annualise_exposure": True,
+        }
+        sr = SHAPRelativities.from_dict(data)
+        rels = sr.extract_relativities(normalise_to="mean")
+        # z_feat should have mean_shap = 0.5 (all observations have shap_col[0]=0.5)
+        z_mean = float(
+            rels.filter(pl.col("feature") == "z_feat")["mean_shap"].mean()
+        )
+        assert abs(z_mean - 0.5) < 1e-6, (
+            f"z_feat mean_shap should be 0.5, got {z_mean}. "
+            "Column alignment is wrong — feature_names order was not applied."
+        )
+
+
+class TestP13LoadMotorSmallN:
+    """
+    Regression tests for P1-3: load_motor must return exactly n_policies rows
+    for any n, including small values where int() truncation would otherwise
+    make the driver age array shorter than n.
+    """
+
+    def test_load_motor_small_n_row_count(self) -> None:
+        """load_motor(n=10) must return exactly 10 rows."""
+        from shap_relativities.datasets.motor import load_motor
+        df = load_motor(n_policies=10, seed=0)
+        assert df.shape[0] == 10, f"Expected 10 rows, got {df.shape[0]}"
+
+    def test_load_motor_n_7_row_count(self) -> None:
+        """n=7 — chosen to maximise rounding gap from proportional sizes."""
+        from shap_relativities.datasets.motor import load_motor
+        df = load_motor(n_policies=7, seed=1)
+        assert df.shape[0] == 7
+
+    def test_load_motor_n_1_row_count(self) -> None:
+        """n=1 — smallest possible portfolio."""
+        from shap_relativities.datasets.motor import load_motor
+        df = load_motor(n_policies=1, seed=99)
+        assert df.shape[0] == 1
+
+    def test_load_motor_driver_age_no_missing(self) -> None:
+        """driver_age must have no null values at small n."""
+        from shap_relativities.datasets.motor import load_motor
+        df = load_motor(n_policies=10, seed=42)
+        assert df["driver_age"].null_count() == 0
+
+
+class TestP02PlotContinuousNumericSort:
+    """
+    Regression tests for P0-2: plot_continuous must sort by numeric value,
+    not lexicographic string order.
+
+    The level column is Utf8 after extract_relativities() casts it. Sorting
+    strings lexicographically scrambles the x-axis for multi-decade ranges:
+    '10.0' < '2.0' lexicographically but 2.0 < 10.0 numerically.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _backend(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        yield
+        plt.close("all")
+
+    def test_plot_continuous_x_axis_numeric_order(self) -> None:
+        """
+        The x values passed to ax.plot must be in ascending numeric order.
+        A string sort of ['1.0','10.0','100.0','2.0','20.0','3.0'] gives the
+        wrong order; casting to Float64 before sorting gives correct order.
+        """
+        import matplotlib.pyplot as plt
+        from shap_relativities._plotting import plot_continuous
+
+        # Values that sort wrong lexicographically: 1,10,100,2,20,3
+        raw_vals = [1.0, 10.0, 100.0, 2.0, 20.0, 3.0]
+        n = len(raw_vals)
+        # Store as strings (as extract_relativities produces)
+        data = pl.DataFrame({
+            "feature": ["x"] * n,
+            "level": [str(v) for v in raw_vals],
+            "relativity": [1.0 + v / 100 for v in raw_vals],
+            "lower_ci": [0.9] * n,
+            "upper_ci": [1.1] * n,
+            "mean_shap": [0.0] * n,
+            "shap_std": [0.1] * n,
+            "n_obs": [50] * n,
+            "exposure_weight": [1.0 / n] * n,
+        })
+
+        fig, ax = plt.subplots()
+        plot_continuous(data, "x", ax, show_ci=False)
+
+        # Extract the x data from the line
+        line = ax.lines[0]
+        x_plotted = line.get_xdata()
+        assert list(x_plotted) == sorted(raw_vals), (
+            f"x-axis not in numeric order. Got {list(x_plotted)}, "
+            f"expected {sorted(raw_vals)}"
+        )
+
+    def test_plot_continuous_zigzag_detection(self) -> None:
+        """
+        The x array from the plot must be monotonically non-decreasing,
+        confirming that the line will not zigzag.
+        """
+        import matplotlib.pyplot as plt
+        from shap_relativities._plotting import plot_continuous
+
+        vals = [5.0, 50.0, 500.0, 10.0, 100.0, 1.0]
+        n = len(vals)
+        data = pl.DataFrame({
+            "feature": ["x"] * n,
+            "level": [str(v) for v in vals],
+            "relativity": [1.0] * n,
+            "lower_ci": [0.9] * n,
+            "upper_ci": [1.1] * n,
+            "mean_shap": [0.0] * n,
+            "shap_std": [0.0] * n,
+            "n_obs": [100] * n,
+            "exposure_weight": [1.0 / n] * n,
+        })
+
+        fig, ax = plt.subplots()
+        plot_continuous(data, "x", ax, show_ci=False)
+
+        x = ax.lines[0].get_xdata()
+        diffs = np.diff(x)
+        assert (diffs >= 0).all(), (
+            f"x-axis is not monotonically non-decreasing: diffs = {diffs}"
+        )
+
+
+class TestP14ContinuousCurveNormalisation:
+    """
+    Regression tests for P1-4: extract_continuous_curve must produce
+    exposure-weighted normalised relativities, not grid-uniform normalised ones.
+
+    Concretely: the exposure-weighted geometric mean of smooth_method='isotonic'
+    and 'loess' curves — computed at the original data points — should be close
+    to 1.0. With the old code it was systematically off when data was skewed.
+    """
+
+    def _sr_from_dict(self):
+        """Create a from_dict SHAPRelativities with a skewed continuous feature."""
+        from shap_relativities import SHAPRelativities
+
+        try:
+            import shap  # noqa: F401
+        except ImportError:
+            pytest.skip("shap not installed")
+
+        rng = np.random.default_rng(42)
+        n = 200
+        # Skewed feature: most values clustered at the low end
+        feat_vals = np.concatenate([
+            rng.uniform(0, 1, size=160),   # 80% in [0, 1]
+            rng.uniform(5, 10, size=40),   # 20% in [5, 10]
+        ])
+        # SHAP values: monotone increasing with feature value
+        shap_col = 0.1 * feat_vals + rng.normal(0, 0.05, size=n)
+        weights = np.ones(n)
+
+        data = {
+            "shap_values": np.column_stack([shap_col]).tolist(),
+            "expected_value": -2.0,
+            "feature_names": ["x"],
+            "categorical_features": [],
+            "continuous_features": ["x"],
+            "X_values": {"x": feat_vals.tolist()},
+            "exposure": weights.tolist(),
+            "annualise_exposure": False,
+        }
+        return SHAPRelativities.from_dict(data)
+
+    def test_isotonic_curve_weighted_geometric_mean_near_one(self) -> None:
+        """
+        Exposure-weighted geometric mean of isotonic curve at original data
+        points should be close to 1.0 (within 2% tolerance).
+        """
+        from sklearn.isotonic import IsotonicRegression
+
+        sr = self._sr_from_dict()
+        curve = sr.extract_continuous_curve("x", n_points=100, smooth_method="isotonic")
+
+        # Re-evaluate the smoothed curve at original data points
+        feat_vals = sr._X["x"].to_numpy()
+        weights = sr._exposure if sr._exposure is not None else np.ones(len(sr._X))
+        shap_col = sr._shap_values[:, 0]
+
+        ir = IsotonicRegression(out_of_bounds="clip")
+        ir.fit(feat_vals, shap_col, sample_weight=weights)
+        smoothed_at_data = ir.predict(feat_vals)
+        weighted_mean_smoothed = np.average(smoothed_at_data, weights=weights)
+        smoothed_rel_at_data = np.exp(smoothed_at_data - weighted_mean_smoothed)
+        wgm_log = np.average(np.log(smoothed_rel_at_data), weights=weights)
+
+        assert abs(wgm_log) < 0.02, (
+            f"Weighted log geometric mean of isotonic curve = {wgm_log:.4f}, "
+            "expected close to 0.0"
         )

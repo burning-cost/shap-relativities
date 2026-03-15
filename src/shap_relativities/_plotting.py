@@ -73,14 +73,22 @@ def plot_continuous(
 
     Args:
         data: Rows for this feature from extract_relativities() output.
-            Required columns: level (numeric), relativity, lower_ci, upper_ci.
+            Required columns: level (numeric, stored as Utf8 string after
+            extract_relativities), relativity, lower_ci, upper_ci.
         feature: Feature name, used as the axis label.
         ax: Axes to draw on.
         show_ci: If True, draw a shaded confidence band.
         color: Line color.
     """
-    data_sorted = data.sort("level")
-    x = data_sorted["level"].to_numpy()
+    # P0-2 fix: the level column is Utf8 after extract_relativities() casts it.
+    # Sorting strings lexicographically gives the wrong order for numeric values
+    # (e.g. '10.0' < '2.0' as strings). Cast to Float64 before sorting.
+    data_sorted = (
+        data
+        .with_columns(pl.col("level").cast(pl.Float64).alias("level_num"))
+        .sort("level_num")
+    )
+    x = data_sorted["level_num"].to_numpy()
     y = data_sorted["relativity"].to_numpy()
 
     ax.plot(x, y, color=color, linewidth=1.5)
