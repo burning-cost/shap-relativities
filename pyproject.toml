@@ -68,10 +68,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/burning-cost/shap-relativities"
+Homepage = "https://burning-cost.github.io/shap-relativities/"
 Repository = "https://github.com/burning-cost/shap-relativities"
 "Issue Tracker" = "https://github.com/burning-cost/shap-relativities/issues"
-Documentation = "https://github.com/burning-cost/shap-relativities#readme"
+Documentation = "https://burning-cost.github.io/shap-relativities/"
 "Bug Tracker" = "https://github.com/burning-cost/shap-relativities/issues"
 
 [tool.hatch.build.targets.wheel]
