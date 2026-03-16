@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shap-relativities"
-version = "0.2.2"
+version = "0.2.3"
 description = "Extract multiplicative rating relativities from GBM models using SHAP values. Built for insurance pricing."
 readme = "README.md"
 license = { text = "MIT" }
@@ -31,7 +31,7 @@ classifiers = [
 dependencies = [
     "polars>=1.0",
     "numpy>=1.24",
-    "scipy>=1.7",
+    "scipy>=1.10",
 ]
 
 [project.optional-dependencies]
@@ -68,9 +68,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/burning-cost/shap-relativities"
+Homepage = "https://burning-cost.github.io/shap-relativities/"
 Repository = "https://github.com/burning-cost/shap-relativities"
 "Issue Tracker" = "https://github.com/burning-cost/shap-relativities/issues"
+Documentation = "https://burning-cost.github.io/shap-relativities/"
+"Bug Tracker" = "https://github.com/burning-cost/shap-relativities/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/shap_relativities"]

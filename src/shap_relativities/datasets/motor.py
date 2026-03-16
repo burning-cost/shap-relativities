@@ -145,14 +145,18 @@ def _generate_policies(n: int, rng: np.random.Generator) -> dict:
             expiry_dates.append(full_expiry)
 
     # Driver age: realistic UK motor book distribution
+    # P1-3 fix: int() truncation of proportional sizes can make the total < n.
+    # At small n (e.g. n=10): sizes may sum to 8, leaving driver_ages[:n] to
+    # silently return fewer than n elements. Add the remainder to segment [1]
+    # (young adult) so the total is always exactly n.
+    _age_props = [0.12, 0.30, 0.35, 0.18, 0.05]
+    _age_ranges = [(17, 25), (25, 40), (40, 60), (60, 75), (75, 86)]
+    sizes = [int(n * p) for p in _age_props]
+    sizes[1] += n - sum(sizes)  # absorb rounding remainder into young-adult segment
     driver_ages = np.concatenate([
-        rng.integers(17, 25, size=int(n * 0.12)),   # young drivers ~12%
-        rng.integers(25, 40, size=int(n * 0.30)),   # young adult
-        rng.integers(40, 60, size=int(n * 0.35)),   # middle-aged
-        rng.integers(60, 75, size=int(n * 0.18)),   # older
-        rng.integers(75, 86, size=int(n * 0.05)),   # elderly
+        rng.integers(lo, hi, size=s)
+        for (lo, hi), s in zip(_age_ranges, sizes)
     ])
-    driver_ages = driver_ages[:n]
     rng.shuffle(driver_ages)
 
     # Driver experience: correlated with age but not perfectly

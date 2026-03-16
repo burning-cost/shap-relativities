@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>shap-relativities — Documentation</title>
+    <style>
+        :root {
+            --text: #212529;
+            --muted: #6c757d;
+            --accent: #f8f9fa;
+            --border: #dee2e6;
+            --link: #0d6efd;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 1rem;
+            line-height: 1.6;
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+        }
+        h1 { font-size: 2rem; font-weight: 300; margin-bottom: 0.25rem; }
+        h2 { font-size: 1.4rem; font-weight: 500; margin-top: 2.5rem; }
+        .version { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
+        .tagline { font-size: 1.15rem; color: var(--muted); margin-bottom: 2rem; }
+        pre {
+            background: var(--accent);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1rem 1.25rem;
+            overflow-x: auto;
+            font-size: 0.9rem;
+        }
+        code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace; }
+        p code {
+            background: var(--accent);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 0.15em 0.4em;
+            font-size: 0.875em;
+        }
+        .cta {
+            display: inline-block;
+            margin-top: 1.5rem;
+            margin-right: 0.75rem;
+            padding: 0.6rem 1.4rem;
+            border-radius: 4px;
+            font-size: 0.95rem;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .cta-primary {
+            background: #0d6efd;
+            color: #fff;
+        }
+        .cta-primary:hover { background: #0b5ed7; }
+        .cta-secondary {
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+        .cta-secondary:hover { background: var(--accent); }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        th { font-weight: 600; background: var(--accent); }
+        a { color: var(--link); }
+        footer {
+            margin-top: 4rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>shap-relativities</h1>
+    <p class="version">v0.2.3</p>
+    <p class="tagline">
+        Extract multiplicative rating relativities from GBM models using SHAP values.
+        Built for insurance pricing.
+    </p>
+
+    <a class="cta cta-primary" href="api/shap_relativities.html">API Reference</a>
+    <a class="cta cta-secondary" href="https://github.com/burning-cost/shap-relativities">GitHub</a>
+    <a class="cta cta-secondary" href="https://pypi.org/project/shap-relativities/">PyPI</a>
+
+    <h2>What it does</h2>
+    <p>
+        GBMs outperform GLMs on most insurance pricing datasets, but the standard
+        output — a single predicted value per row — is not directly useful for pricing
+        teams. Underwriters and actuaries work with <em>relativities</em>: a table of
+        multipliers, one per feature level, that explains how each risk characteristic
+        adjusts the base rate.
+    </p>
+    <p>
+        <code>shap-relativities</code> converts a trained CatBoost model into exactly
+        that format. The output is directly comparable to GLM <code>exp(beta)</code>
+        relativities: a Polars DataFrame of <code>(feature, level, relativity)</code>
+        triples where the base level is 1.0 and relativities multiply together to give
+        the model's expected prediction.
+    </p>
+
+    <h2>Install</h2>
+    <pre><code>uv add shap-relativities
+# or, for CatBoost + plotting support:
+uv add "shap-relativities[all]"</code></pre>
+
+    <h2>Quick start</h2>
+    <pre><code>from shap_relativities import SHAPRelativities
+
+sr = SHAPRelativities(
+    model=catboost_model,
+    X=df.select(["area", "ncd_years", "vehicle_age"]),
+    exposure=df["exposure"],
+    categorical_features=["area", "ncd_years"],
+)
+sr.fit()
+
+rels = sr.extract_relativities(
+    normalise_to="base_level",
+    base_levels={"area": "London", "ncd_years": 0},
+)
+print(rels)</code></pre>
+
+    <p>Or use the one-shot convenience wrapper:</p>
+    <pre><code>from shap_relativities import extract_relativities
+
+rels = extract_relativities(
+    model, X,
+    exposure=df["exposure"],
+    categorical_features=["area"],
+)</code></pre>
+
+    <h2>Public API</h2>
+    <table>
+        <thead>
+            <tr><th>Name</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><a href="api/shap_relativities.html#SHAPRelativities"><code>SHAPRelativities</code></a></td>
+                <td>Main class. Wraps a trained model and feature matrix, computes SHAP values, and extracts relativities with CIs.</td>
+            </tr>
+            <tr>
+                <td><a href="api/shap_relativities.html#SHAPRelativities.fit"><code>.fit()</code></a></td>
+                <td>Compute SHAP values via TreeExplainer. Must be called before extracting relativities.</td>
+            </tr>
+            <tr>
+                <td><a href="api/shap_relativities.html#SHAPRelativities.extract_relativities"><code>.extract_relativities()</code></a></td>
+                <td>Return a Polars DataFrame of (feature, level, relativity, lower_ci, upper_ci, ...).</td>
+            </tr>
+            <tr>
+                <td><a href="api/shap_relativities.html#SHAPRelativities.extract_continuous_curve"><code>.extract_continuous_curve()</code></a></td>
+                <td>Smoothed relativity curve for a continuous feature (LOESS or isotonic).</td>
+            </tr>
+            <tr>
+                <td><a href="api/shap_relativities.html#SHAPRelativities.validate"><code>.validate()</code></a></td>
+                <td>Diagnostic checks: reconstruction error, feature coverage, sparse levels.</td>
+            </tr>
+            <tr>
+                <td><a href="api/shap_relativities.html#SHAPRelativities.baseline"><code>.baseline()</code></a></td>
+                <td>exp(expected_value) — the annualised base rate in prediction space.</td>
+            </tr>
+            <tr>
+                <td><a href="api/shap_relativities.html#SHAPRelativities.to_dict"><code>.to_dict()</code></a> / <a href="api/shap_relativities.html#SHAPRelativities.from_dict"><code>.from_dict()</code></a></td>
+                <td>Serialise and restore a fitted instance without the original model.</td>
+            </tr>
+            <tr>
+                <td><a href="api/shap_relativities.html#extract_relativities"><code>extract_relativities()</code></a></td>
+                <td>Convenience function for one-shot use. Calls fit() and extract_relativities() internally.</td>
+            </tr>
+            <tr>
+                <td><a href="api/shap_relativities/datasets.html#load_motor"><code>datasets.load_motor()</code></a></td>
+                <td>Synthetic UK motor portfolio dataset with known true parameters for validation.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Output columns</h2>
+    <table>
+        <thead>
+            <tr><th>Column</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr><td><code>feature</code></td><td>Feature name</td></tr>
+            <tr><td><code>level</code></td><td>Feature level (category value or per-observation value for continuous features)</td></tr>
+            <tr><td><code>relativity</code></td><td>Multiplicative relativity. Base level = 1.0</td></tr>
+            <tr><td><code>lower_ci</code></td><td>Lower bound of 95% CLT confidence interval</td></tr>
+            <tr><td><code>upper_ci</code></td><td>Upper bound of 95% CLT confidence interval</td></tr>
+            <tr><td><code>mean_shap</code></td><td>Exposure-weighted mean SHAP value in log space</td></tr>
+            <tr><td><code>shap_std</code></td><td>Weighted standard deviation of SHAP values</td></tr>
+            <tr><td><code>n_obs</code></td><td>Observation count for this level</td></tr>
+            <tr><td><code>exposure_weight</code></td><td>Total exposure weight for this level</td></tr>
+        </tbody>
+    </table>
+
+    <footer>
+        <p>
+            MIT licence &mdash; built by <a href="https://github.com/burning-cost">Burning Cost</a>.
+            Source on <a href="https://github.com/burning-cost/shap-relativities">GitHub</a>.
+        </p>
+    </footer>
+</div>
+</body>
+</html>
