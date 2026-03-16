@@ -7,7 +7,7 @@
 
 **Your GBM beats the GLM. But you can't get the factor table out of it.**
 
-Every UK pricing team we've spoken to has the same problem: a GBM sitting on a server outperforming the production GLM, but nobody can get the relativities out of it. The regulator wants a factor table. Radar needs an import file. The head of pricing wants to challenge the model in terms they recognise.
+Every UK pricing team we've spoken to has the same problem: a GBM sitting on a server outperforming the production GLM, but nobody can get the relativities out of it. The regulator wants a factor table. The head of pricing wants to challenge the model in terms they recognise.
 
 So the GBM sits in a notebook. The GLM goes to production.
 
@@ -95,6 +95,12 @@ model = catboost.CatBoostRegressor(
 model.fit(pool)
 
 # Extract relativities - pass the Polars DataFrame directly
+# Note: categorical_features here tells SHAPRelativities to aggregate SHAP values
+# by discrete level for these features. It is NOT the same as CatBoost's cat_features
+# training parameter — ncd_years and has_convictions are passed as Int32 to CatBoost
+# without cat_features=, meaning CatBoost treats them as numeric. That is fine here
+# because the DGP is ordinal. The categorical_features argument below is purely
+# an aggregation hint for the relativity extraction step.
 sr = SHAPRelativities(
     model=model,
     X=X,                           # Polars DataFrame
@@ -113,21 +119,24 @@ print(rels.select(["feature", "level", "relativity", "lower_ci", "upper_ci"]))
 Output (approximately — the GBM recovers the known DGP):
 
 ```
-              feature level  relativity  lower_ci  upper_ci
-0           area_code     0       1.000     1.000     1.000
-1           area_code     1       1.108     1.060     1.159
-2           area_code     2       1.227     1.178     1.278
-3           area_code     3       1.427     1.369     1.487
-4           area_code     4       1.667     1.596     1.741
-5           area_code     5       1.934     1.841     2.032
-6           ncd_years     0       1.000     1.000     1.000
-7           ncd_years     1       0.882     0.851     0.913
-8           ncd_years     2       0.780     0.750     0.811
-9           ncd_years     3       0.683     0.656     0.712
-10          ncd_years     4       0.612     0.585     0.641
-11          ncd_years     5       0.549     0.521     0.578
-12    has_convictions     0       1.000     1.000     1.000
-13    has_convictions     1       1.568     1.489     1.651
+shape: (14, 5)
+┌─────────────────┬───────┬────────────┬──────────┬──────────┐
+│ feature         ┆ level ┆ relativity ┆ lower_ci ┆ upper_ci │
+│ ---             ┆ ---   ┆ ---        ┆ ---      ┆ ---      │
+│ str             ┆ i64   ┆ f64        ┆ f64      ┆ f64      │
+╞═════════════════╪═══════╪════════════╪══════════╪══════════╡
+│ area_code       ┆ 0     ┆ 1.0        ┆ 1.0      ┆ 1.0      │
+│ area_code       ┆ 1     ┆ 1.108      ┆ 1.06     ┆ 1.159    │
+│ area_code       ┆ 2     ┆ 1.227      ┆ 1.178    ┆ 1.278    │
+│ area_code       ┆ 3     ┆ 1.427      ┆ 1.369    ┆ 1.487    │
+│ area_code       ┆ 4     ┆ 1.667      ┆ 1.596    ┆ 1.741    │
+│ …               ┆ …     ┆ …          ┆ …        ┆ …        │
+│ ncd_years       ┆ 3     ┆ 0.683      ┆ 0.656    ┆ 0.712    │
+│ ncd_years       ┆ 4     ┆ 0.612      ┆ 0.585    ┆ 0.641    │
+│ ncd_years       ┆ 5     ┆ 0.549      ┆ 0.521    ┆ 0.578    │
+│ has_convictions ┆ 0     ┆ 1.0        ┆ 1.0      ┆ 1.0      │
+│ has_convictions ┆ 1     ┆ 1.568      ┆ 1.489    ┆ 1.651    │
+└─────────────────┴───────┴────────────┴──────────┴──────────┘
 ```
 
 The true DGP NCD coefficient is -0.12, so NCD=5 vs NCD=0 should give `exp(-0.6) ≈ 0.549`. That's exactly what we get. Conviction relativity should be close to `exp(0.45) ≈ 1.57`.
@@ -224,6 +233,18 @@ age_curve = sr.extract_continuous_curve(
 
 ---
 
+## Exporting relativities
+
+The `extract_relativities()` output is a standard Polars DataFrame. To export as CSV for manual import into a rating engine:
+
+```python
+rels.write_csv("relativities.csv")
+```
+
+The CSV has columns `feature`, `level`, `relativity`, `lower_ci`, `upper_ci` — a format that maps directly to any rating engine's factor table import. Radar, Emblem, and Earnix all have CSV factor table import functionality; check your platform's import template for the exact column naming required.
+
+---
+
 ## API reference
 
 ### `SHAPRelativities`
@@ -241,6 +262,8 @@ SHAPRelativities(
     annualise_exposure: bool = True,
 )
 ```
+
+`categorical_features` and `continuous_features` are aggregation hints for the relativity extraction step. They tell the library which features to summarise by discrete level (categorical) versus by smoothed curve (continuous). This is distinct from CatBoost's `cat_features` training parameter, which controls how CatBoost handles encoding during model training.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -302,7 +325,7 @@ Both models use the same six rating factors. The GLM fits main effects only (the
 
 The benchmark measures these metrics on the held-out test set and compares Poisson deviance, Gini (discriminatory power), and worst-case A/E by predicted decile. Expected improvement on a portfolio with interaction effects across rating factors: −3% to −8% deviance reduction, +2 to +5 Gini points, −10% to −30% on worst-decile A/E. On homogeneous books where the GLM's log-linear assumptions hold, the gap narrows to under 1 Gini point.
 
-**When to use:** When a CatBoost model already beats the production GLM and you need to get the factor table out of it — for Radar upload, regulatory filing, or a pricing committee review. The value is not just the predictive improvement; it is the ability to present GBM-level accuracy in a format the rating engine already understands.
+**When to use:** When a CatBoost model already beats the production GLM and you need to get the factor table out of it — for regulatory filing or a pricing committee review. The value is not just the predictive improvement; it is the ability to present GBM-level accuracy as a relativities table that maps directly to how rating engines represent factors.
 
 **When NOT to use:** On small portfolios (under 10,000 policies) where CatBoost will overfit without careful tuning, or when a GLM filing with closed-form standard errors is a regulatory requirement and the Gini improvement does not justify the overhead. Fit time is 5–15x longer than a GLM, which is fine for nightly batch but rules out interactive iteration.
 
@@ -312,7 +335,7 @@ The benchmark measures these metrics on the held-out test set and compares Poiss
 
 **Correlated features.** SHAP attribution for correlated features is not uniquely defined under `tree_path_dependent`. Area band and socioeconomic index will share attribution in a way that depends on tree split order. Use `feature_perturbation="interventional"` with a background dataset to correct for correlations — this is more principled but substantially slower.
 
-**Interaction effects.** TreeSHAP allocates interaction effects back to individual features. If area and vehicle age interact in the model, some of that interaction gets attributed to each feature, not cleanly separated into main effect and interaction. `shap_interaction_values()` gives pure main effects but is O(n * p^2).
+**Interaction effects.** TreeSHAP allocates interaction effects back to individual features. If area and vehicle age interact in the model, some of that interaction gets attributed to each feature, not cleanly separated into main effect and interaction. `shap_interaction_values()` gives pure main effects but is computationally expensive — O(TLD²) where T = number of trees, L = maximum leaves per tree, and D = maximum tree depth. Expect meaningful slowdown on large ensembles.
 
 **Model uncertainty.** The CLT intervals capture data uncertainty only. They do not say anything about whether the GBM would give different relativities on a different data split, or whether the feature contributions are stable across refits. Bootstrap across model refits for a full uncertainty picture. We haven't implemented this; it is on the roadmap.
 
