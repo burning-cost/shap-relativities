@@ -257,14 +257,18 @@ glm_gini = gini(
 )
 
 ohe = glm.named_steps["prep"].named_transformers_["area_ohe"]
-area_cats = ohe.categories_[0]
+# get_feature_names_out() gives ["area_B", "area_C", "area_D", "area_E", "area_F"]
+# — the 5 non-base area columns. coef_[0:5] = area B-F, [5] = ncd, [6] = conviction.
+ohe_names = ohe.get_feature_names_out()  # e.g. ["area_B", ..., "area_F"]
 ncd_coef = float(glm.named_steps["model"].coef_[5])
 conv_coef = float(glm.named_steps["model"].coef_[6])
 area_coefs = glm.named_steps["model"].coef_[:5]
 
 glm_area_rels: dict[str, float] = {"A": 1.0}
-for i, cat in enumerate(area_cats):
-    glm_area_rels[cat] = float(np.exp(area_coefs[i]))
+for i, ohe_name in enumerate(ohe_names):
+    # ohe_name is "area_B", strip prefix to get letter
+    letter = ohe_name.split("_")[1]
+    glm_area_rels[letter] = float(np.exp(area_coefs[i]))
 glm_conv_rel = float(np.exp(conv_coef))
 
 print(f"  GLM fit time: {glm_time:.1f}s")
