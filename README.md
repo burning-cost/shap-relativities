@@ -331,6 +331,38 @@ The benchmark measures these metrics on the held-out test set and compares Poiss
 
 ---
 
+## Benchmark Results
+
+Measured on Databricks serverless compute (Python 3.12), 20,000 synthetic UK motor
+policies, 3 rating factors (area A-F, ncd_years 0-5, has_conviction 0/1), known
+log-linear Poisson DGP. 70/30 train/test split. Run `benchmarks/benchmark.py` to
+reproduce.
+
+| Approach | Level relativities? | Mean &#124;error&#124; vs true | Gini | Notes |
+|---|---|---|---|---|
+| CatBoost feature importance | No | N/A | 0.4785 | Ranks factors only — cannot give NCD=5 discount |
+| Poisson GLM exp(beta) | Yes | 4.47% | 0.4500 | Correctly-specified baseline |
+| **shap-relativities** | **Yes** | **9.44%** | **0.4785** | SHAP + CatBoost |
+
+Key numbers from this run:
+
+- **NCD=5 vs NCD=0** (true discount 45.1%): SHAP gives 0.427 (error −22%), GLM gives 0.603 (error +10%)
+- **Conviction loading** (true 1.57×): SHAP gives 1.501 (error −4%), GLM gives 1.547 (error −1%)
+- **Gini improvement** from GBM vs GLM: +2.85pp
+- **SHAP reconstruction**: PASS (max error 5.69e-16)
+
+The feature importance column cannot produce any of these numbers — only a ranking
+score per feature. SHAP relativities produce level-specific multiplicative factors
+with confidence intervals, in the same format as a rate engine expects.
+
+On a correctly-specified log-linear DGP, the GLM has an advantage in relativity
+precision (4.47% vs 9.44% error). The SHAP errors are larger because the GBM does
+not constrain to log-linear form. On portfolios with genuine interaction effects,
+the GBM's Gini improvement offsets this — the relativity estimates are less precise
+but the model is more accurate, and you can still deploy via a factor table.
+
+Benchmark completed in 4.6s on serverless compute.
+
 ## Limitations
 
 **Correlated features.** SHAP attribution for correlated features is not uniquely defined under `tree_path_dependent`. Area band and socioeconomic index will share attribution in a way that depends on tree split order. Use `feature_perturbation="interventional"` with a background dataset to correct for correlations — this is more principled but substantially slower.
