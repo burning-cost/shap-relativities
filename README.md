@@ -5,6 +5,8 @@
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-BSD--3-blue)]()
 
+> 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/shap-relativities/discussions). Found it useful? A ⭐ helps others find it.
+
 **Your GBM beats the GLM. But you can't get the factor table out of it.**
 
 Every UK pricing team we've spoken to has the same problem: a GBM sitting on a server outperforming the production GLM, but nobody can get the relativities out of it. The regulator wants a factor table. The head of pricing wants to challenge the model in terms they recognise.
