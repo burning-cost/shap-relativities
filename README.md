@@ -24,7 +24,7 @@ Benchmarked against a Poisson GLM on synthetic UK motor data (50,000 policies, k
 | Poisson deviance reduction | baseline | −3% to −8% | lower is better |
 | Gini improvement | baseline | +2 to +5 points | higher is better |
 | Worst-decile A/E deviation | baseline | −10% to −30% | lower is better |
-| Relativity recovery (NCD=5 vs NCD=0) | exp(-0.6) = 0.549 | 0.549 | exact on synthetic DGP |
+| Relativity recovery (NCD=5 vs NCD=0) | exp(-0.6) = 0.549 | ~0.435 | approximately; reconstruction error documented in benchmarks |
 | Fit time | seconds | 5–15x slower | CatBoost training dominates |
 
 On homogeneous books where the GLM's log-linear assumptions hold, the Gini gap narrows to under 1 point. On books with interaction effects, the GBM consistently wins — and you can now get those relativities into a rating engine.
@@ -118,30 +118,30 @@ rels = sr.extract_relativities(
 print(rels.select(["feature", "level", "relativity", "lower_ci", "upper_ci"]))
 ```
 
-Output (approximately — the GBM recovers the known DGP):
+Output (run on Databricks serverless, 2026-03-19, seed=42):
 
 ```
 shape: (14, 5)
 ┌─────────────────┬───────┬────────────┬──────────┬──────────┐
 │ feature         ┆ level ┆ relativity ┆ lower_ci ┆ upper_ci │
 │ ---             ┆ ---   ┆ ---        ┆ ---      ┆ ---      │
-│ str             ┆ i64   ┆ f64        ┆ f64      ┆ f64      │
+│ str             ┆ str   ┆ f64        ┆ f64      ┆ f64      │
 ╞═════════════════╪═══════╪════════════╪══════════╪══════════╡
-│ area_code       ┆ 0     ┆ 1.0        ┆ 1.0      ┆ 1.0      │
-│ area_code       ┆ 1     ┆ 1.108      ┆ 1.06     ┆ 1.159    │
-│ area_code       ┆ 2     ┆ 1.227      ┆ 1.178    ┆ 1.278    │
-│ area_code       ┆ 3     ┆ 1.427      ┆ 1.369    ┆ 1.487    │
-│ area_code       ┆ 4     ┆ 1.667      ┆ 1.596    ┆ 1.741    │
+│ area_code       ┆ 0     ┆ 1.000      ┆ 0.998    ┆ 1.002    │
+│ area_code       ┆ 1     ┆ 1.110      ┆ 1.109    ┆ 1.111    │
+│ area_code       ┆ 2     ┆ 1.149      ┆ 1.149    ┆ 1.150    │
+│ area_code       ┆ 3     ┆ 1.269      ┆ 1.268    ┆ 1.269    │
+│ area_code       ┆ 4     ┆ 1.588      ┆ 1.586    ┆ 1.589    │
 │ …               ┆ …     ┆ …          ┆ …        ┆ …        │
-│ ncd_years       ┆ 3     ┆ 0.683      ┆ 0.656    ┆ 0.712    │
-│ ncd_years       ┆ 4     ┆ 0.612      ┆ 0.585    ┆ 0.641    │
-│ ncd_years       ┆ 5     ┆ 0.549      ┆ 0.521    ┆ 0.578    │
-│ has_convictions ┆ 0     ┆ 1.0        ┆ 1.0      ┆ 1.0      │
-│ has_convictions ┆ 1     ┆ 1.568      ┆ 1.489    ┆ 1.651    │
+│ ncd_years       ┆ 3     ┆ 0.641      ┆ 0.640    ┆ 0.642    │
+│ ncd_years       ┆ 4     ┆ 0.542      ┆ 0.541    ┆ 0.543    │
+│ ncd_years       ┆ 5     ┆ 0.435      ┆ 0.434    ┆ 0.436    │
+│ has_convictions ┆ 0     ┆ 1.000      ┆ 1.000    ┆ 1.000    │
+│ has_convictions ┆ 1     ┆ 1.681      ┆ 1.673    ┆ 1.689    │
 └─────────────────┴───────┴────────────┴──────────┴──────────┘
 ```
 
-The true DGP NCD coefficient is -0.12, so NCD=5 vs NCD=0 should give `exp(-0.6) ≈ 0.549`. That's exactly what we get. Conviction relativity should be close to `exp(0.45) ≈ 1.57`.
+The true DGP NCD coefficient is -0.12, so NCD=5 vs NCD=0 should give `exp(-0.6) ≈ 0.549`. The GBM recovers approximately 0.435 — a reconstruction error of roughly 21%. This is documented in the benchmark results below. Conviction relativity is approximately `exp(0.45) ≈ 1.57`; SHAP gives 1.681 here (7% above true). The `level` column dtype is `str` — filter using string comparison: `rels.filter(pl.col("level") == "5")`.
 
 For one-liners, use the convenience function:
 
