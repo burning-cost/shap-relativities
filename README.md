@@ -4,6 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/shap-relativities)](https://pypi.org/project/shap-relativities/)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/shap-relativities/blob/main/notebooks/quickstart.ipynb)
 
 > 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/shap-relativities/discussions). Found it useful? A ⭐ helps others find it.
 
