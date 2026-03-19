@@ -163,7 +163,7 @@ rels = extract_relativities(
 
 For insurance pricing, CatBoost has two advantages over alternatives:
 
-1. **Native categoricals.** CatBoost handles string and integer categorical features without encoding. You pass area band "A"-"F" directly; no label encoding step that obscures the feature's meaning in the relativity table.
+1. **Native categoricals.** CatBoost handles string categorical features natively — pass area band "A"-"F" directly with `cat_features=["area"]` and no encoding is needed. Note: the quick-start above converts area to an integer `area_code` for a minimal example, but Int32 features passed without `cat_features=` are treated as numeric by CatBoost. For production use, pass string labels with `cat_features` specified so CatBoost treats the feature categorically.
 
 2. **Ordered boosting.** CatBoost's default training algorithm reduces target leakage from high-cardinality categoricals, which is relevant for vehicle group (50 levels) or postcode sector.
 
@@ -188,9 +188,11 @@ This is directly analogous to `exp(beta_3 - beta_0)` from a GLM. The base level 
 CLT confidence intervals:
 
 ```
-SE = shap_std / sqrt(n_obs)
-CI = exp(mean_shap ± z * SE - base_shap)
+SE_k = shap_std_k / sqrt(n_k)
+CI = exp(mean_shap_k ± z * SE_k - mean_shap_base)
 ```
+
+where `n_k` is the count of policies with feature level = k (not the portfolio total). For sparse levels, `n_k` can be small even on a large portfolio, which is why the sparse levels check matters.
 
 These quantify data uncertainty — how precisely we've estimated each level's mean SHAP contribution given the portfolio. They do not capture model uncertainty from the GBM fitting process.
 
