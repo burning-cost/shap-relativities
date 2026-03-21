@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/burning-cost/shap-relativities/blob/main/notebooks/quickstart.ipynb)
 
-> 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/shap-relativities/discussions). Found it useful? A ⭐ helps others find it.
+> Questions or feedback? Start a [Discussion](https://github.com/burning-cost/shap-relativities/discussions). Found it useful? A star helps others find it.
 
 **Your GBM beats the GLM. But you can't get the factor table out of it.**
 
@@ -18,18 +18,25 @@ So the GBM sits in a notebook. The GLM goes to production.
 
 ## Why bother
 
-Benchmarked against a Poisson GLM on synthetic UK motor data (20,000 policies, known DGP, 70/30 split). Both models use the same three rating factors; the GLM fits main effects only. Numbers measured on Databricks serverless, 2026-03-21, seed=42.
+The GBM's advantage over a GLM shows up most clearly when the true risk structure is non-linear or has interactions. The benchmark below uses a DGP that reflects this: driver age has a U-shaped risk curve (young and old drivers are both worse), and urban areas with old vehicles carry an additional 35% loading on top of main effects. A standard main-effects GLM cannot model either of these.
 
-| Metric | Poisson GLM | shap-relativities | Notes |
-|--------|-------------|-------------------|-------|
-| Gini coefficient | 0.4500 | 0.4785 | higher is better; GBM wins by +2.85pp |
-| Relativity mean error vs true | 4.47% | 9.44% | GLM more precise on log-linear DGP |
-| NCD=5 discount (true: 0.549) | 0.603 (+10%) | 0.427 (−22%) | GLM closer on clean DGP |
-| Fit time | 0.1s | ~8× slower | CatBoost training dominates |
+Numbers measured on Databricks serverless, 2026-03-21, seed=77. 25,000 synthetic UK motor policies, 70/30 train/test split.
 
-On a correctly-specified log-linear DGP, the GLM has a small advantage in relativity precision — its MLE is tailored to that functional form. The GBM still wins on Gini (+2.85pp) because it finds nonlinear patterns even in a linear world. On books with genuine interaction effects, the Gini advantage widens to 3–8pp and the GLM's relativity precision advantage disappears because the model itself is wrong.
+| Approach | Factor table? | Mean error vs true DGP | Gini |
+|----------|--------------|------------------------|------|
+| Poisson GLM (linear driver_age) | Yes — but single age slope, no U-shape | 5.79% | 0.393 |
+| Poisson GLM (binned age, 5 bands) | Yes — actuary must choose bins first | 5.87% | 0.414 |
+| **shap-relativities (CatBoost)** | **Yes — full age curve + discrete factors** | **6.80%** | **0.411** |
 
-See [Scenario 2](#scenario-2-interaction-dgp) below for the case where SHAP-relativities clearly earns its keep.
+The mean relativity errors are similar across all three approaches on the discrete factors (area, NCD, conviction). The difference is what you get for driver age:
+
+- **Linear GLM**: one slope coefficient. Cannot represent the U-shape.
+- **Binned GLM**: band-level relativities — but only if the actuary has already noticed the age curve is non-linear and chosen appropriate cut-points.
+- **SHAP relativities**: a continuous age relativity curve, extracted directly via `extract_continuous_curve()`, with no binning decision required. The model finds the shape.
+
+The Gini results are honest: a carefully specified binned GLM with 5 age bands matches CatBoost on Gini (+1.7pp vs linear GLM, comparable to CatBoost). The case for CatBoost+SHAP is not that it always wins on Gini — it is that it finds the non-linear structure automatically and produces a deployable factor table without the actuary first doing shape analysis.
+
+Where CatBoost wins more clearly: books with interaction effects. The same portfolio, with an area × vehicle_age interaction (urban areas + old vehicles → 1.35× additional loading), is where a main-effects-only GLM — regardless of how carefully it is specified — cannot compete. See [Scenario 3](#scenario-3-interaction-dgp) below.
 
 ▶ [Run on Databricks](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/shap_relativities_demo.py)
 
@@ -316,14 +323,43 @@ Frequency is Poisson with log-linear predictor. Severity is Gamma. `TRUE_FREQ_PA
 
 ## Performance benchmarks
 
-Two scenarios, both run on Databricks serverless compute (Python 3.12, 2026-03-21).
-Full scripts: `benchmarks/benchmark.py` (Scenario 1), `benchmarks/benchmark_interactions.py` (Scenario 2).
+Three scenarios, all run on Databricks serverless compute (Python 3.12, 2026-03-21).
+Full scripts: `benchmarks/benchmark_nonlinear.py` (Scenario 1), `benchmarks/benchmark.py` (Scenario 2), `benchmarks/benchmark_interactions.py` (Scenario 3).
 
-### Scenario 1: Clean log-linear DGP
+### Scenario 1: Non-linear DGP (the primary benchmark)
+
+25,000 synthetic UK motor policies. Five rating features including driver age (continuous, U-shaped risk curve), area (A-F), vehicle age (with area×vehicle_age interaction), NCD years (0-5), conviction flag. The true DGP has:
+
+- **Driver age**: U-shaped quadratic in log space. Age 20 is 1.47× and age 70 is 3.42× the minimum-risk age (38). A linear age coefficient cannot represent this.
+- **Area × vehicle age interaction**: urban areas (D, E, F) with vehicles aged 8+ years carry an additional 35% loading. Approximately 26% of the portfolio.
+- **NCD**: approximately log-linear with a small extra step at the max bonus level.
+
+Three approaches are compared. 70/30 train/test split.
+
+| Approach | Factor table? | Mean error vs true DGP | Gini | Notes |
+|----------|--------------|------------------------|------|-------|
+| Poisson GLM (linear driver_age) | Area, NCD, conviction — but driver_age as a slope only | 5.79% | 0.393 | Cannot represent U-shape; worst Gini |
+| Poisson GLM (binned age, 5 bands) | Area, NCD, conviction + 5 age bands | 5.87% | 0.414 | Actuary must bin first; no interaction term |
+| **shap-relativities (CatBoost)** | **All factors + continuous age curve** | **6.80%** | **0.411** | **Finds shape automatically; handles interaction** |
+
+Key numbers:
+
+- **Gini**: CatBoost +1.74pp vs linear GLM; essentially tied with binned GLM (-0.36pp)
+- **Discrete-factor mean error**: all approaches within 1pp of each other (5.8-6.8%)
+- **Age curve**: linear GLM cannot produce one; binned GLM gives 5-band step function; SHAP gives a smooth continuous curve via `extract_continuous_curve()`
+- **Conviction loading** (true 1.65×): SHAP recovers 1.58× (4% below true)
+- **NCD=5 step discount** (true 0.844 vs NCD=4): SHAP gives 0.907 (7% above — partial absorption of the extra step)
+- **Fit time**: GLM <0.1s, CatBoost+SHAP ~10s (including SHAP computation)
+
+The honest finding: a carefully specified binned-age GLM with 5 age bands is competitive on Gini and relativity error for the *discrete* features. CatBoost with SHAP earns its keep on three grounds: (1) it finds the age shape without the actuary first doing shape analysis; (2) it produces a continuous age relativity curve rather than a step function; (3) it captures the interaction automatically, without an interaction term being specified.
+
+---
+
+### Scenario 2: Reference scenario — clean log-linear DGP
 
 20,000 synthetic UK motor policies. Three rating factors: area band (A-F), NCD years (0-5), conviction flag. True DGP is log-linear Poisson — the standard GLM assumption holds exactly. 70/30 train/test split.
 
-This is the GLM's home ground. It is correctly specified. The GBM still finds patterns, but the GLM's advantage in relativity precision is meaningful here.
+This is the GLM's home ground. The correctly-specified GLM recovers the true relativities by MLE. Including this scenario is useful for two reasons: it shows the library works on simple portfolios, and it documents the cost of not constraining to log-linear form when the constraint is in fact valid.
 
 | Approach | Level relativities? | Mean error vs true | Gini | Notes |
 |----------|--------------------|--------------------|------|-------|
@@ -335,15 +371,15 @@ Key numbers:
 
 - **NCD=5 discount** (true 0.549): GLM recovers 0.603 (+10%), SHAP gives 0.427 (−22%)
 - **Conviction loading** (true 1.570): GLM recovers 1.547 (−1%), SHAP gives 1.501 (−4%)
-- **Gini gap** GBM vs GLM: +2.85pp — driven by nonlinear patterns the GLM misses even on a linear DGP
+- **Gini gap** GBM vs GLM: +2.85pp — the GBM finds nonlinear patterns even in a linear world
 - **SHAP reconstruction**: PASS (max error 5.69e-16)
-- **Total fit time**: GLM 0.1s, CatBoost+SHAP ~1.4s (8x slower)
+- **Total fit time**: GLM 0.1s, CatBoost+SHAP ~1.4s
 
-The SHAP relativity errors are larger than the GLM's because the GBM does not constrain itself to log-linear form — it fits a more flexible function and the level-mean SHAP values partially absorb that flexibility. On a clean DGP like this one, that is a cost with no benefit on deviance.
+On a correctly-specified log-linear DGP, the GLM has an advantage in relativity precision (4.47% vs 9.44% error). The SHAP errors are larger because the GBM does not constrain itself to log-linear form. On portfolios with genuine interaction effects — which most real motor books have — the GBM's Gini improvement more than compensates.
 
 ---
 
-### Scenario 2: Interaction DGP (vehicle group × NCD)
+### Scenario 3: Interaction DGP (vehicle group × NCD)
 
 30,000 synthetic policies. Four rating factors including vehicle group (3 classes). The true DGP has a **vehicle_group=3 × NCD_years ≤ 1 interaction**: high-group policyholders with limited driving history pay 1.40× more than the main effects alone predict. This combination represents roughly 5% of the portfolio. 70/30 split.
 
@@ -362,7 +398,7 @@ Key numbers:
 - **Absorbed interaction**: VG=3 SHAP relativity = 2.378 vs true main effect of 2.10. The extra 0.278 is the interaction signal leaking into the marginal relativity. This is expected — TreeSHAP distributes interaction effects back to the contributing features. The factor table is still deployable; it prices the VG=3 segment correctly on average even though it cannot separate the main effect from the interaction term.
 - **Fit time**: CatBoost+SHAP ~4.5s vs GLM <0.1s. Acceptable for nightly batch.
 
-The GLM's deviance advantage in Scenario 1 disappears when the model is misspecified. On this DGP, the GBM's +3.4pp Gini advantage is driven by a real structural problem the GLM cannot address — not by the GBM overfitting.
+The GLM's deviance advantage in Scenario 2 disappears when the model is misspecified. On this DGP, the GBM's +3.4pp Gini advantage is driven by a real structural problem the GLM cannot address — not by the GBM overfitting.
 
 ---
 
@@ -370,7 +406,7 @@ The GLM's deviance advantage in Scenario 1 disappears when the model is misspeci
 
 Be honest about when to reach for this library and when not to.
 
-**The true DGP is purely multiplicative with no interactions.** On a clean log-linear DGP (Scenario 1 above), a correctly-specified Poisson GLM has lower deviance than CatBoost and much better relativity precision — 4.47% vs 9.44% mean error vs ground truth. If your book is genuinely log-linear (which you can test with the [insurance-interactions](https://github.com/burning-cost/insurance-interactions) library), a GLM is the more honest model choice. SHAP-relativities will not break anything in this case, but the GLM relativities will be closer to the true parameters.
+**The true DGP is purely multiplicative with no interactions.** On a clean log-linear DGP (Scenario 2 above), a correctly-specified Poisson GLM has lower deviance than CatBoost and much better relativity precision — 4.47% vs 9.44% mean error vs ground truth. If your book is genuinely log-linear (which you can test with the [insurance-interactions](https://github.com/burning-cost/insurance-interactions) library), a GLM is the more honest model choice. SHAP-relativities will not break anything in this case, but the GLM relativities will be closer to the true parameters.
 
 **The portfolio is small (under ~15,000 policies).** CatBoost needs enough data to find the interactions that justify its flexibility. On thin books, regularisation helps but CatBoost will still find spurious patterns in the training data. GLM with regularised MLE is more reliable when n is small. The confidence intervals from SHAP will also be wide on a small book — the CLT approximation holds but `n_k` for rare levels will be very small, making the CIs nearly useless.
 
@@ -381,38 +417,6 @@ Be honest about when to reach for this library and when not to.
 In practice, these conditions often hold partially. The right use of this library is: train the GBM, measure whether it materially outperforms the GLM on your data (look at Gini and worst-decile A/E, not just deviance), and only deploy SHAP-relativities if the GBM advantage is large enough to justify the additional complexity. A +1pp Gini gain on a 50k policy book is noise. A +5pp gain with a 20pp A/E improvement on the worst decile is real.
 
 ---
-
-## Benchmark Results
-
-Measured on Databricks serverless compute (Python 3.12), 20,000 synthetic UK motor
-policies, 3 rating factors (area A-F, ncd_years 0-5, has_conviction 0/1), known
-log-linear Poisson DGP. 70/30 train/test split. Run `benchmarks/benchmark.py` to
-reproduce.
-
-| Approach | Level relativities? | Mean &#124;error&#124; vs true | Gini | Notes |
-|---|---|---|---|---|
-| CatBoost feature importance | No | N/A | 0.4785 | Ranks factors only — cannot give NCD=5 discount |
-| Poisson GLM exp(beta) | Yes | 4.47% | 0.4500 | Correctly-specified baseline |
-| **shap-relativities** | **Yes** | **9.44%** | **0.4785** | SHAP + CatBoost |
-
-Key numbers from this run:
-
-- **NCD=5 vs NCD=0** (true discount 45.1%): SHAP gives 0.427 (error −22%), GLM gives 0.603 (error +10%)
-- **Conviction loading** (true 1.57×): SHAP gives 1.501 (error −4%), GLM gives 1.547 (error −1%)
-- **Gini improvement** from GBM vs GLM: +2.85pp
-- **SHAP reconstruction**: PASS (max error 5.69e-16)
-
-The feature importance column cannot produce any of these numbers — only a ranking
-score per feature. SHAP relativities produce level-specific multiplicative factors
-with confidence intervals, in the same format as a rate engine expects.
-
-On a correctly-specified log-linear DGP, the GLM has an advantage in relativity
-precision (4.47% vs 9.44% error). The SHAP errors are larger because the GBM does
-not constrain to log-linear form. On portfolios with genuine interaction effects,
-the GBM's Gini improvement offsets this — the relativity estimates are less precise
-but the model is more accurate, and you can still deploy via a factor table.
-
-Benchmark completed in 4.6s on serverless compute.
 
 ## Limitations
 
