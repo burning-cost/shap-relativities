@@ -44,7 +44,7 @@ See [Scenario 2](#scenario-2-interaction-dgp) below for the case where SHAP-rela
 ```bash
 uv add "shap-relativities[all]"
 # or
-pip install "shap-relativities[all]"
+uv add "shap-relativities[all]"
 ```
 
 Or pick what you need:
