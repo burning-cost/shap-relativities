@@ -34,7 +34,7 @@ from ._core import SHAPRelativities
 
 __all__ = ["SHAPRelativities", "extract_relativities"]
 
-__version__ = "0.2.0"
+__version__ = "0.2.3"
 
 
 def extract_relativities(
