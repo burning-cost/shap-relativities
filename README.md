@@ -43,8 +43,6 @@ See [Scenario 2](#scenario-2-interaction-dgp) below for the case where SHAP-rela
 
 ```bash
 uv add "shap-relativities[all]"
-# or
-uv add "shap-relativities[all]"
 ```
 
 Or pick what you need:
@@ -461,7 +459,7 @@ A ready-to-run Databricks notebook benchmarking this library against standard ap
 | Library | Description |
 |---------|-------------|
 | [insurance-deploy](https://github.com/burning-cost/insurance-deploy) | Champion/challenger framework with ENBP audit logging |
-| [insurance-elasticity](https://github.com/burning-cost/insurance-elasticity) | Causal price elasticity via Double Machine Learning |
+| [insurance-causal](https://github.com/burning-cost/insurance-causal) | Causal price elasticity via Double Machine Learning (includes elasticity subpackage) |
 | [insurance-optimise](https://github.com/burning-cost/insurance-optimise) | Constrained rate change optimisation with FCA PS21/5 compliance |
 
 **Governance**
