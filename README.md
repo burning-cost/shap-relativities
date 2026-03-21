@@ -478,12 +478,13 @@ A ready-to-run Databricks notebook benchmarking this library against standard ap
 
 ## Related Libraries
 
-| Library | What it does |
+| Library | Description |
 |---------|-------------|
+| [insurance-distill](https://github.com/burning-cost/insurance-distill) | GBM-to-GLM distillation — converts a CatBoost model into a deployable GLM using knowledge distillation |
+| [insurance-interactions](https://github.com/burning-cost/insurance-interactions) | Automated GLM interaction detection — use alongside SHAP to identify where the GLM's multiplicative structure breaks down |
+| [insurance-glm-tools](https://github.com/burning-cost/insurance-glm-tools) | Factor clustering and GLM utilities — group SHAP-derived relativities into rating bands |
 | [insurance-cv](https://github.com/burning-cost/insurance-cv) | Temporal cross-validation for insurance models — use walk-forward splits when evaluating GBMs before extracting relativities |
 | [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model monitoring with PSI, A/E ratios, and Gini drift — tracks whether SHAP-derived relativities stay valid after deployment |
-| [insurance-interactions](https://github.com/burning-cost/insurance-interactions) | Automated GLM interaction detection — use alongside SHAP to identify where the GLM's multiplicative structure breaks down |
-
 ## Licence
 
 BSD-3. Part of the [Burning Cost](https://github.com/burning-cost) insurance pricing toolkit.
