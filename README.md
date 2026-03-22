@@ -489,4 +489,4 @@ A ready-to-run Databricks notebook benchmarking this library against standard ap
 | [insurance-monitoring](https://github.com/burning-cost/insurance-monitoring) | Model monitoring with PSI, A/E ratios, and Gini drift — tracks whether SHAP-derived relativities stay valid after deployment |
 ## Licence
 
-BSD-3. Part of the [Burning Cost](https://github.com/burning-cost) insurance pricing toolkit.
+MIT. Part of the [Burning Cost](https://github.com/burning-cost) insurance pricing toolkit.
