@@ -7,7 +7,7 @@ name = "shap-relativities"
 version = "0.2.3"
 description = "Extract multiplicative rating relativities from GBM models using SHAP values. Built for insurance pricing."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
 authors = [
     { name = "Burning Cost", email = "pricing.frontier@gmail.com" },
