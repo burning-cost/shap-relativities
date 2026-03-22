@@ -162,6 +162,13 @@ class SHAPRelativities:
             # pd.Series or similar
             self._exposure = np.asarray(exposure)
 
+        # Validate exposure length matches X
+        if self._exposure is not None and len(self._exposure) != len(self._X):
+            raise ValueError(
+                f"exposure length ({len(self._exposure)}) does not match "
+                f"X length ({len(self._X)}). Both must have the same number of rows."
+            )
+
         self._feature_perturbation = feature_perturbation
         self._n_background_samples = n_background_samples
         self._annualise_exposure = annualise_exposure
@@ -315,6 +322,13 @@ class SHAPRelativities:
             One row per (feature, level) combination.
         """
         self._check_fitted()
+
+        _VALID_CI_METHODS = {"clt", "bootstrap", "none"}
+        if ci_method not in _VALID_CI_METHODS:
+            raise ValueError(
+                f"Unknown ci_method {ci_method!r}. "
+                f"Valid options are: {sorted(_VALID_CI_METHODS)}."
+            )
 
         if ci_method == "bootstrap":
             raise NotImplementedError(

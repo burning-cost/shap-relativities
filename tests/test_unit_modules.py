@@ -1282,3 +1282,125 @@ class TestP14ContinuousCurveNormalisation:
             f"Weighted log geometric mean of isotonic curve = {wgm_log:.4f}, "
             "expected close to 0.0"
         )
+
+
+# ===========================================================================
+# P1 fixes: ci_method validation and exposure length check
+# ===========================================================================
+
+
+class TestCiMethodValidation:
+    """
+    ci_method='foo' should raise ValueError with a clear message listing valid
+    options. Previously the value was silently accepted and fell through to the
+    clt branch.
+    """
+
+    def _fitted_sr(self) -> "SHAPRelativities":
+        """Build a minimal fitted SHAPRelativities via from_dict (no shap/catboost)."""
+        from shap_relativities import SHAPRelativities
+        data = {
+            "shap_values": [[0.1, -0.2], [0.3, 0.0], [-0.1, 0.15]],
+            "expected_value": -1.5,
+            "feature_names": ["area", "ncd"],
+            "categorical_features": ["area", "ncd"],
+            "continuous_features": [],
+            "X_values": {"area": ["A", "B", "A"], "ncd": ["0", "1", "2"]},
+            "exposure": None,
+            "annualise_exposure": True,
+        }
+        return SHAPRelativities.from_dict(data)
+
+    def test_unknown_ci_method_raises_value_error(self) -> None:
+        """Passing ci_method='foo' must raise ValueError."""
+        sr = self._fitted_sr()
+        with pytest.raises(ValueError, match="Unknown ci_method"):
+            sr.extract_relativities(ci_method="foo")
+
+    def test_unknown_ci_method_error_lists_valid_options(self) -> None:
+        """The ValueError message must mention the valid options."""
+        sr = self._fitted_sr()
+        with pytest.raises(ValueError, match="clt"):
+            sr.extract_relativities(ci_method="invalid_method")
+
+    def test_valid_ci_methods_do_not_raise(self) -> None:
+        """'clt' and 'none' must be accepted without raising."""
+        sr = self._fitted_sr()
+        for method in ("clt", "none"):
+            # Should complete without ValueError
+            result = sr.extract_relativities(ci_method=method)
+            assert result is not None
+
+    def test_bootstrap_raises_not_implemented(self) -> None:
+        """'bootstrap' is valid but not yet implemented — NotImplementedError."""
+        sr = self._fitted_sr()
+        with pytest.raises(NotImplementedError):
+            sr.extract_relativities(ci_method="bootstrap")
+
+
+class TestExposureLengthValidation:
+    """
+    Passing exposure with a different row count from X must raise ValueError.
+    Previously this was silently accepted and would cause cryptic downstream
+    errors or silently wrong results.
+    """
+
+    def _make_sr(self, n_x: int, n_exposure: int):
+        """Attempt to construct SHAPRelativities with mismatched sizes."""
+        import shap  # noqa: F401 — skip if not installed
+        from shap_relativities import SHAPRelativities
+
+        class _DummyModel:
+            pass
+
+        X = pl.DataFrame({"area": ["A"] * n_x, "ncd": list(range(n_x))})
+        exposure = np.ones(n_exposure)
+        return SHAPRelativities(model=_DummyModel(), X=X, exposure=exposure)
+
+    def test_mismatched_exposure_raises_value_error(self) -> None:
+        """exposure with wrong length must raise ValueError at construction time."""
+        try:
+            import shap  # noqa: F401
+        except ImportError:
+            pytest.skip("shap not installed")
+
+        with pytest.raises(ValueError, match="exposure length"):
+            self._make_sr(n_x=100, n_exposure=50)
+
+    def test_mismatched_exposure_error_mentions_both_lengths(self) -> None:
+        """The error message must report both the X length and exposure length."""
+        try:
+            import shap  # noqa: F401
+        except ImportError:
+            pytest.skip("shap not installed")
+
+        with pytest.raises(ValueError, match="100") as exc_info:
+            self._make_sr(n_x=100, n_exposure=50)
+        assert "50" in str(exc_info.value)
+
+    def test_matching_exposure_does_not_raise(self) -> None:
+        """Matching lengths must construct without error."""
+        try:
+            import shap  # noqa: F401
+        except ImportError:
+            pytest.skip("shap not installed")
+
+        # Should not raise
+        sr = self._make_sr(n_x=10, n_exposure=10)
+        assert sr is not None
+
+    def test_none_exposure_does_not_raise(self) -> None:
+        """exposure=None must always be accepted regardless of X size."""
+        try:
+            import shap  # noqa: F401
+        except ImportError:
+            pytest.skip("shap not installed")
+
+        from shap_relativities import SHAPRelativities
+
+        class _DummyModel:
+            pass
+
+        X = pl.DataFrame({"area": ["A", "B", "C"]})
+        sr = SHAPRelativities(model=_DummyModel(), X=X, exposure=None)
+        assert sr is not None
