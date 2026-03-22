@@ -34,7 +34,12 @@ from ._core import SHAPRelativities
 
 __all__ = ["SHAPRelativities", "extract_relativities"]
 
-__version__ = "0.2.3"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("shap-relativities")
+except PackageNotFoundError:
+    __version__ = "0.0.0"  # not installed
 
 
 def extract_relativities(
