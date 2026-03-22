@@ -158,44 +158,49 @@ prediction.</p>
 </span><span id="L-34"><a href="#L-34"><span class="linenos">34</span></a>
 </span><span id="L-35"><a href="#L-35"><span class="linenos">35</span></a><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;SHAPRelativities&quot;</span><span class="p">,</span> <span class="s2">&quot;extract_relativities&quot;</span><span class="p">]</span>
 </span><span id="L-36"><a href="#L-36"><span class="linenos">36</span></a>
-</span><span id="L-37"><a href="#L-37"><span class="linenos">37</span></a><span class="n">__version__</span> <span class="o">=</span> <span class="s2">&quot;0.2.3&quot;</span>
+</span><span id="L-37"><a href="#L-37"><span class="linenos">37</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">importlib.metadata</span><span class="w"> </span><span class="kn">import</span> <span class="n">version</span><span class="p">,</span> <span class="n">PackageNotFoundError</span>
 </span><span id="L-38"><a href="#L-38"><span class="linenos">38</span></a>
-</span><span id="L-39"><a href="#L-39"><span class="linenos">39</span></a>
-</span><span id="L-40"><a href="#L-40"><span class="linenos">40</span></a><span class="k">def</span><span class="w"> </span><span class="nf">extract_relativities</span><span class="p">(</span>
-</span><span id="L-41"><a href="#L-41"><span class="linenos">41</span></a>    <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
-</span><span id="L-42"><a href="#L-42"><span class="linenos">42</span></a>    <span class="n">X</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
-</span><span id="L-43"><a href="#L-43"><span class="linenos">43</span></a>    <span class="n">exposure</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="L-44"><a href="#L-44"><span class="linenos">44</span></a>    <span class="n">categorical_features</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="L-45"><a href="#L-45"><span class="linenos">45</span></a>    <span class="n">base_levels</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="L-46"><a href="#L-46"><span class="linenos">46</span></a>    <span class="n">ci_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;clt&quot;</span><span class="p">,</span>
-</span><span id="L-47"><a href="#L-47"><span class="linenos">47</span></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-</span><span id="L-48"><a href="#L-48"><span class="linenos">48</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="L-49"><a href="#L-49"><span class="linenos">49</span></a><span class="sd">    One-shot extraction of SHAP relativities from a tree model.</span>
-</span><span id="L-50"><a href="#L-50"><span class="linenos">50</span></a>
-</span><span id="L-51"><a href="#L-51"><span class="linenos">51</span></a><span class="sd">    Wraps SHAPRelativities.fit() and extract_relativities() for cases where</span>
-</span><span id="L-52"><a href="#L-52"><span class="linenos">52</span></a><span class="sd">    you don&#39;t need the intermediate object.</span>
-</span><span id="L-53"><a href="#L-53"><span class="linenos">53</span></a>
-</span><span id="L-54"><a href="#L-54"><span class="linenos">54</span></a><span class="sd">    Args:</span>
-</span><span id="L-55"><a href="#L-55"><span class="linenos">55</span></a><span class="sd">        model: Trained CatBoost model with a log-link objective (Poisson,</span>
-</span><span id="L-56"><a href="#L-56"><span class="linenos">56</span></a><span class="sd">            Tweedie, or Gamma). CatBoost is the recommended choice - it handles</span>
-</span><span id="L-57"><a href="#L-57"><span class="linenos">57</span></a><span class="sd">            categorical features natively without encoding.</span>
-</span><span id="L-58"><a href="#L-58"><span class="linenos">58</span></a><span class="sd">        X: Feature matrix. Accepts a Polars or pandas DataFrame. Polars is</span>
-</span><span id="L-59"><a href="#L-59"><span class="linenos">59</span></a><span class="sd">            preferred; pandas is accepted and converted internally.</span>
-</span><span id="L-60"><a href="#L-60"><span class="linenos">60</span></a><span class="sd">        exposure: Earned policy years. If None, all observations are equally</span>
-</span><span id="L-61"><a href="#L-61"><span class="linenos">61</span></a><span class="sd">            weighted.</span>
-</span><span id="L-62"><a href="#L-62"><span class="linenos">62</span></a><span class="sd">        categorical_features: Features to aggregate by level. If None, all</span>
-</span><span id="L-63"><a href="#L-63"><span class="linenos">63</span></a><span class="sd">            non-numeric columns are treated as categorical.</span>
-</span><span id="L-64"><a href="#L-64"><span class="linenos">64</span></a><span class="sd">        base_levels: Base level for each categorical feature (gets</span>
-</span><span id="L-65"><a href="#L-65"><span class="linenos">65</span></a><span class="sd">            relativity = 1.0).</span>
-</span><span id="L-66"><a href="#L-66"><span class="linenos">66</span></a><span class="sd">        ci_method: &quot;clt&quot; (default) or &quot;none&quot;.</span>
-</span><span id="L-67"><a href="#L-67"><span class="linenos">67</span></a>
-</span><span id="L-68"><a href="#L-68"><span class="linenos">68</span></a><span class="sd">    Returns:</span>
-</span><span id="L-69"><a href="#L-69"><span class="linenos">69</span></a><span class="sd">        Polars DataFrame with columns: feature, level, relativity, lower_ci,</span>
-</span><span id="L-70"><a href="#L-70"><span class="linenos">70</span></a><span class="sd">        upper_ci, mean_shap, shap_std, n_obs, exposure_weight.</span>
-</span><span id="L-71"><a href="#L-71"><span class="linenos">71</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="L-72"><a href="#L-72"><span class="linenos">72</span></a>    <span class="n">sr</span> <span class="o">=</span> <span class="n">SHAPRelativities</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">exposure</span><span class="p">,</span> <span class="n">categorical_features</span><span class="p">)</span>
-</span><span id="L-73"><a href="#L-73"><span class="linenos">73</span></a>    <span class="n">sr</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
-</span><span id="L-74"><a href="#L-74"><span class="linenos">74</span></a>    <span class="k">return</span> <span class="n">sr</span><span class="o">.</span><span class="n">extract_relativities</span><span class="p">(</span><span class="n">base_levels</span><span class="o">=</span><span class="n">base_levels</span><span class="p">,</span> <span class="n">ci_method</span><span class="o">=</span><span class="n">ci_method</span><span class="p">)</span>
+</span><span id="L-39"><a href="#L-39"><span class="linenos">39</span></a><span class="k">try</span><span class="p">:</span>
+</span><span id="L-40"><a href="#L-40"><span class="linenos">40</span></a>    <span class="n">__version__</span> <span class="o">=</span> <span class="n">version</span><span class="p">(</span><span class="s2">&quot;shap-relativities&quot;</span><span class="p">)</span>
+</span><span id="L-41"><a href="#L-41"><span class="linenos">41</span></a><span class="k">except</span> <span class="n">PackageNotFoundError</span><span class="p">:</span>
+</span><span id="L-42"><a href="#L-42"><span class="linenos">42</span></a>    <span class="n">__version__</span> <span class="o">=</span> <span class="s2">&quot;0.0.0&quot;</span>  <span class="c1"># not installed</span>
+</span><span id="L-43"><a href="#L-43"><span class="linenos">43</span></a>
+</span><span id="L-44"><a href="#L-44"><span class="linenos">44</span></a>
+</span><span id="L-45"><a href="#L-45"><span class="linenos">45</span></a><span class="k">def</span><span class="w"> </span><span class="nf">extract_relativities</span><span class="p">(</span>
+</span><span id="L-46"><a href="#L-46"><span class="linenos">46</span></a>    <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+</span><span id="L-47"><a href="#L-47"><span class="linenos">47</span></a>    <span class="n">X</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+</span><span id="L-48"><a href="#L-48"><span class="linenos">48</span></a>    <span class="n">exposure</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="L-49"><a href="#L-49"><span class="linenos">49</span></a>    <span class="n">categorical_features</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="L-50"><a href="#L-50"><span class="linenos">50</span></a>    <span class="n">base_levels</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="L-51"><a href="#L-51"><span class="linenos">51</span></a>    <span class="n">ci_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;clt&quot;</span><span class="p">,</span>
+</span><span id="L-52"><a href="#L-52"><span class="linenos">52</span></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+</span><span id="L-53"><a href="#L-53"><span class="linenos">53</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="L-54"><a href="#L-54"><span class="linenos">54</span></a><span class="sd">    One-shot extraction of SHAP relativities from a tree model.</span>
+</span><span id="L-55"><a href="#L-55"><span class="linenos">55</span></a>
+</span><span id="L-56"><a href="#L-56"><span class="linenos">56</span></a><span class="sd">    Wraps SHAPRelativities.fit() and extract_relativities() for cases where</span>
+</span><span id="L-57"><a href="#L-57"><span class="linenos">57</span></a><span class="sd">    you don&#39;t need the intermediate object.</span>
+</span><span id="L-58"><a href="#L-58"><span class="linenos">58</span></a>
+</span><span id="L-59"><a href="#L-59"><span class="linenos">59</span></a><span class="sd">    Args:</span>
+</span><span id="L-60"><a href="#L-60"><span class="linenos">60</span></a><span class="sd">        model: Trained CatBoost model with a log-link objective (Poisson,</span>
+</span><span id="L-61"><a href="#L-61"><span class="linenos">61</span></a><span class="sd">            Tweedie, or Gamma). CatBoost is the recommended choice - it handles</span>
+</span><span id="L-62"><a href="#L-62"><span class="linenos">62</span></a><span class="sd">            categorical features natively without encoding.</span>
+</span><span id="L-63"><a href="#L-63"><span class="linenos">63</span></a><span class="sd">        X: Feature matrix. Accepts a Polars or pandas DataFrame. Polars is</span>
+</span><span id="L-64"><a href="#L-64"><span class="linenos">64</span></a><span class="sd">            preferred; pandas is accepted and converted internally.</span>
+</span><span id="L-65"><a href="#L-65"><span class="linenos">65</span></a><span class="sd">        exposure: Earned policy years. If None, all observations are equally</span>
+</span><span id="L-66"><a href="#L-66"><span class="linenos">66</span></a><span class="sd">            weighted.</span>
+</span><span id="L-67"><a href="#L-67"><span class="linenos">67</span></a><span class="sd">        categorical_features: Features to aggregate by level. If None, all</span>
+</span><span id="L-68"><a href="#L-68"><span class="linenos">68</span></a><span class="sd">            non-numeric columns are treated as categorical.</span>
+</span><span id="L-69"><a href="#L-69"><span class="linenos">69</span></a><span class="sd">        base_levels: Base level for each categorical feature (gets</span>
+</span><span id="L-70"><a href="#L-70"><span class="linenos">70</span></a><span class="sd">            relativity = 1.0).</span>
+</span><span id="L-71"><a href="#L-71"><span class="linenos">71</span></a><span class="sd">        ci_method: &quot;clt&quot; (default) or &quot;none&quot;.</span>
+</span><span id="L-72"><a href="#L-72"><span class="linenos">72</span></a>
+</span><span id="L-73"><a href="#L-73"><span class="linenos">73</span></a><span class="sd">    Returns:</span>
+</span><span id="L-74"><a href="#L-74"><span class="linenos">74</span></a><span class="sd">        Polars DataFrame with columns: feature, level, relativity, lower_ci,</span>
+</span><span id="L-75"><a href="#L-75"><span class="linenos">75</span></a><span class="sd">        upper_ci, mean_shap, shap_std, n_obs, exposure_weight.</span>
+</span><span id="L-76"><a href="#L-76"><span class="linenos">76</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="L-77"><a href="#L-77"><span class="linenos">77</span></a>    <span class="n">sr</span> <span class="o">=</span> <span class="n">SHAPRelativities</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">exposure</span><span class="p">,</span> <span class="n">categorical_features</span><span class="p">)</span>
+</span><span id="L-78"><a href="#L-78"><span class="linenos">78</span></a>    <span class="n">sr</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+</span><span id="L-79"><a href="#L-79"><span class="linenos">79</span></a>    <span class="k">return</span> <span class="n">sr</span><span class="o">.</span><span class="n">extract_relativities</span><span class="p">(</span><span class="n">base_levels</span><span class="o">=</span><span class="n">base_levels</span><span class="p">,</span> <span class="n">ci_method</span><span class="o">=</span><span class="n">ci_method</span><span class="p">)</span>
 </span></pre></div>
 
 
@@ -1745,41 +1750,41 @@ plot_relativities() still work but fit() cannot be re-run.</p>
 
     </div>
     <a class="headerlink" href="#extract_relativities"></a>
-            <div class="pdoc-code codehilite"><pre><span></span><span id="extract_relativities-41"><a href="#extract_relativities-41"><span class="linenos">41</span></a><span class="k">def</span><span class="w"> </span><span class="nf">extract_relativities</span><span class="p">(</span>
-</span><span id="extract_relativities-42"><a href="#extract_relativities-42"><span class="linenos">42</span></a>    <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
-</span><span id="extract_relativities-43"><a href="#extract_relativities-43"><span class="linenos">43</span></a>    <span class="n">X</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
-</span><span id="extract_relativities-44"><a href="#extract_relativities-44"><span class="linenos">44</span></a>    <span class="n">exposure</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="extract_relativities-45"><a href="#extract_relativities-45"><span class="linenos">45</span></a>    <span class="n">categorical_features</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="extract_relativities-46"><a href="#extract_relativities-46"><span class="linenos">46</span></a>    <span class="n">base_levels</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="extract_relativities-47"><a href="#extract_relativities-47"><span class="linenos">47</span></a>    <span class="n">ci_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;clt&quot;</span><span class="p">,</span>
-</span><span id="extract_relativities-48"><a href="#extract_relativities-48"><span class="linenos">48</span></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-</span><span id="extract_relativities-49"><a href="#extract_relativities-49"><span class="linenos">49</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="extract_relativities-50"><a href="#extract_relativities-50"><span class="linenos">50</span></a><span class="sd">    One-shot extraction of SHAP relativities from a tree model.</span>
-</span><span id="extract_relativities-51"><a href="#extract_relativities-51"><span class="linenos">51</span></a>
-</span><span id="extract_relativities-52"><a href="#extract_relativities-52"><span class="linenos">52</span></a><span class="sd">    Wraps SHAPRelativities.fit() and extract_relativities() for cases where</span>
-</span><span id="extract_relativities-53"><a href="#extract_relativities-53"><span class="linenos">53</span></a><span class="sd">    you don&#39;t need the intermediate object.</span>
-</span><span id="extract_relativities-54"><a href="#extract_relativities-54"><span class="linenos">54</span></a>
-</span><span id="extract_relativities-55"><a href="#extract_relativities-55"><span class="linenos">55</span></a><span class="sd">    Args:</span>
-</span><span id="extract_relativities-56"><a href="#extract_relativities-56"><span class="linenos">56</span></a><span class="sd">        model: Trained CatBoost model with a log-link objective (Poisson,</span>
-</span><span id="extract_relativities-57"><a href="#extract_relativities-57"><span class="linenos">57</span></a><span class="sd">            Tweedie, or Gamma). CatBoost is the recommended choice - it handles</span>
-</span><span id="extract_relativities-58"><a href="#extract_relativities-58"><span class="linenos">58</span></a><span class="sd">            categorical features natively without encoding.</span>
-</span><span id="extract_relativities-59"><a href="#extract_relativities-59"><span class="linenos">59</span></a><span class="sd">        X: Feature matrix. Accepts a Polars or pandas DataFrame. Polars is</span>
-</span><span id="extract_relativities-60"><a href="#extract_relativities-60"><span class="linenos">60</span></a><span class="sd">            preferred; pandas is accepted and converted internally.</span>
-</span><span id="extract_relativities-61"><a href="#extract_relativities-61"><span class="linenos">61</span></a><span class="sd">        exposure: Earned policy years. If None, all observations are equally</span>
-</span><span id="extract_relativities-62"><a href="#extract_relativities-62"><span class="linenos">62</span></a><span class="sd">            weighted.</span>
-</span><span id="extract_relativities-63"><a href="#extract_relativities-63"><span class="linenos">63</span></a><span class="sd">        categorical_features: Features to aggregate by level. If None, all</span>
-</span><span id="extract_relativities-64"><a href="#extract_relativities-64"><span class="linenos">64</span></a><span class="sd">            non-numeric columns are treated as categorical.</span>
-</span><span id="extract_relativities-65"><a href="#extract_relativities-65"><span class="linenos">65</span></a><span class="sd">        base_levels: Base level for each categorical feature (gets</span>
-</span><span id="extract_relativities-66"><a href="#extract_relativities-66"><span class="linenos">66</span></a><span class="sd">            relativity = 1.0).</span>
-</span><span id="extract_relativities-67"><a href="#extract_relativities-67"><span class="linenos">67</span></a><span class="sd">        ci_method: &quot;clt&quot; (default) or &quot;none&quot;.</span>
-</span><span id="extract_relativities-68"><a href="#extract_relativities-68"><span class="linenos">68</span></a>
-</span><span id="extract_relativities-69"><a href="#extract_relativities-69"><span class="linenos">69</span></a><span class="sd">    Returns:</span>
-</span><span id="extract_relativities-70"><a href="#extract_relativities-70"><span class="linenos">70</span></a><span class="sd">        Polars DataFrame with columns: feature, level, relativity, lower_ci,</span>
-</span><span id="extract_relativities-71"><a href="#extract_relativities-71"><span class="linenos">71</span></a><span class="sd">        upper_ci, mean_shap, shap_std, n_obs, exposure_weight.</span>
-</span><span id="extract_relativities-72"><a href="#extract_relativities-72"><span class="linenos">72</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="extract_relativities-73"><a href="#extract_relativities-73"><span class="linenos">73</span></a>    <span class="n">sr</span> <span class="o">=</span> <span class="n">SHAPRelativities</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">exposure</span><span class="p">,</span> <span class="n">categorical_features</span><span class="p">)</span>
-</span><span id="extract_relativities-74"><a href="#extract_relativities-74"><span class="linenos">74</span></a>    <span class="n">sr</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
-</span><span id="extract_relativities-75"><a href="#extract_relativities-75"><span class="linenos">75</span></a>    <span class="k">return</span> <span class="n">sr</span><span class="o">.</span><span class="n">extract_relativities</span><span class="p">(</span><span class="n">base_levels</span><span class="o">=</span><span class="n">base_levels</span><span class="p">,</span> <span class="n">ci_method</span><span class="o">=</span><span class="n">ci_method</span><span class="p">)</span>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="extract_relativities-46"><a href="#extract_relativities-46"><span class="linenos">46</span></a><span class="k">def</span><span class="w"> </span><span class="nf">extract_relativities</span><span class="p">(</span>
+</span><span id="extract_relativities-47"><a href="#extract_relativities-47"><span class="linenos">47</span></a>    <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+</span><span id="extract_relativities-48"><a href="#extract_relativities-48"><span class="linenos">48</span></a>    <span class="n">X</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+</span><span id="extract_relativities-49"><a href="#extract_relativities-49"><span class="linenos">49</span></a>    <span class="n">exposure</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="extract_relativities-50"><a href="#extract_relativities-50"><span class="linenos">50</span></a>    <span class="n">categorical_features</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="extract_relativities-51"><a href="#extract_relativities-51"><span class="linenos">51</span></a>    <span class="n">base_levels</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="extract_relativities-52"><a href="#extract_relativities-52"><span class="linenos">52</span></a>    <span class="n">ci_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;clt&quot;</span><span class="p">,</span>
+</span><span id="extract_relativities-53"><a href="#extract_relativities-53"><span class="linenos">53</span></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+</span><span id="extract_relativities-54"><a href="#extract_relativities-54"><span class="linenos">54</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="extract_relativities-55"><a href="#extract_relativities-55"><span class="linenos">55</span></a><span class="sd">    One-shot extraction of SHAP relativities from a tree model.</span>
+</span><span id="extract_relativities-56"><a href="#extract_relativities-56"><span class="linenos">56</span></a>
+</span><span id="extract_relativities-57"><a href="#extract_relativities-57"><span class="linenos">57</span></a><span class="sd">    Wraps SHAPRelativities.fit() and extract_relativities() for cases where</span>
+</span><span id="extract_relativities-58"><a href="#extract_relativities-58"><span class="linenos">58</span></a><span class="sd">    you don&#39;t need the intermediate object.</span>
+</span><span id="extract_relativities-59"><a href="#extract_relativities-59"><span class="linenos">59</span></a>
+</span><span id="extract_relativities-60"><a href="#extract_relativities-60"><span class="linenos">60</span></a><span class="sd">    Args:</span>
+</span><span id="extract_relativities-61"><a href="#extract_relativities-61"><span class="linenos">61</span></a><span class="sd">        model: Trained CatBoost model with a log-link objective (Poisson,</span>
+</span><span id="extract_relativities-62"><a href="#extract_relativities-62"><span class="linenos">62</span></a><span class="sd">            Tweedie, or Gamma). CatBoost is the recommended choice - it handles</span>
+</span><span id="extract_relativities-63"><a href="#extract_relativities-63"><span class="linenos">63</span></a><span class="sd">            categorical features natively without encoding.</span>
+</span><span id="extract_relativities-64"><a href="#extract_relativities-64"><span class="linenos">64</span></a><span class="sd">        X: Feature matrix. Accepts a Polars or pandas DataFrame. Polars is</span>
+</span><span id="extract_relativities-65"><a href="#extract_relativities-65"><span class="linenos">65</span></a><span class="sd">            preferred; pandas is accepted and converted internally.</span>
+</span><span id="extract_relativities-66"><a href="#extract_relativities-66"><span class="linenos">66</span></a><span class="sd">        exposure: Earned policy years. If None, all observations are equally</span>
+</span><span id="extract_relativities-67"><a href="#extract_relativities-67"><span class="linenos">67</span></a><span class="sd">            weighted.</span>
+</span><span id="extract_relativities-68"><a href="#extract_relativities-68"><span class="linenos">68</span></a><span class="sd">        categorical_features: Features to aggregate by level. If None, all</span>
+</span><span id="extract_relativities-69"><a href="#extract_relativities-69"><span class="linenos">69</span></a><span class="sd">            non-numeric columns are treated as categorical.</span>
+</span><span id="extract_relativities-70"><a href="#extract_relativities-70"><span class="linenos">70</span></a><span class="sd">        base_levels: Base level for each categorical feature (gets</span>
+</span><span id="extract_relativities-71"><a href="#extract_relativities-71"><span class="linenos">71</span></a><span class="sd">            relativity = 1.0).</span>
+</span><span id="extract_relativities-72"><a href="#extract_relativities-72"><span class="linenos">72</span></a><span class="sd">        ci_method: &quot;clt&quot; (default) or &quot;none&quot;.</span>
+</span><span id="extract_relativities-73"><a href="#extract_relativities-73"><span class="linenos">73</span></a>
+</span><span id="extract_relativities-74"><a href="#extract_relativities-74"><span class="linenos">74</span></a><span class="sd">    Returns:</span>
+</span><span id="extract_relativities-75"><a href="#extract_relativities-75"><span class="linenos">75</span></a><span class="sd">        Polars DataFrame with columns: feature, level, relativity, lower_ci,</span>
+</span><span id="extract_relativities-76"><a href="#extract_relativities-76"><span class="linenos">76</span></a><span class="sd">        upper_ci, mean_shap, shap_std, n_obs, exposure_weight.</span>
+</span><span id="extract_relativities-77"><a href="#extract_relativities-77"><span class="linenos">77</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="extract_relativities-78"><a href="#extract_relativities-78"><span class="linenos">78</span></a>    <span class="n">sr</span> <span class="o">=</span> <span class="n">SHAPRelativities</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">exposure</span><span class="p">,</span> <span class="n">categorical_features</span><span class="p">)</span>
+</span><span id="extract_relativities-79"><a href="#extract_relativities-79"><span class="linenos">79</span></a>    <span class="n">sr</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+</span><span id="extract_relativities-80"><a href="#extract_relativities-80"><span class="linenos">80</span></a>    <span class="k">return</span> <span class="n">sr</span><span class="o">.</span><span class="n">extract_relativities</span><span class="p">(</span><span class="n">base_levels</span><span class="o">=</span><span class="n">base_levels</span><span class="p">,</span> <span class="n">ci_method</span><span class="o">=</span><span class="n">ci_method</span><span class="p">)</span>
 </span></pre></div>
 
 
