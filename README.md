@@ -1,6 +1,7 @@
 # shap-relativities
 
 [![PyPI](https://img.shields.io/pypi/v/shap-relativities)](https://pypi.org/project/shap-relativities/)
+[![Downloads](https://img.shields.io/pypi/dm/shap-relativities)](https://pypi.org/project/shap-relativities/)
 [![Python](https://img.shields.io/pypi/pyversions/shap-relativities)](https://pypi.org/project/shap-relativities/)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
