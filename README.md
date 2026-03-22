@@ -58,6 +58,8 @@ Or pick what you need:
 uv add "shap-relativities[ml]"    # shap + catboost + scikit-learn + pandas bridge
 uv add "shap-relativities[plot]"  # matplotlib for plots
 uv add shap-relativities          # core only (polars, numpy, scipy)
+# or
+pip install shap-relativities
 ```
 
 **Output is a Polars DataFrame.** The library accepts either Polars or pandas DataFrames as input, and returns Polars. Pandas is a bridge dependency: shap's TreeExplainer uses it internally, so it is still installed with the `[ml]` extra.
@@ -118,7 +120,7 @@ sr = SHAPRelativities(
 )
 sr.fit()
 
- rels = sr.extract_relativities(
+rels = sr.extract_relativities(
     normalise_to="base_level",
     base_levels={"area_code": 0, "ncd_years": 0, "has_convictions": 0},
 )
