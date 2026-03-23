@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shap-relativities"
-version = "0.2.4"
+version = "0.2.5"
 description = "Extract multiplicative rating relativities from GBM models using SHAP values. Built for insurance pricing."
 readme = "README.md"
 license = "MIT"
@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "polars>=1.0",
-    "numpy>=1.24",
+    "numpy>=1.25",
     "scipy>=1.10",
     "pyarrow>=12.0",
 ]
