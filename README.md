@@ -154,6 +154,10 @@ shape: (14, 5)
 
 The true DGP NCD coefficient is -0.12, so NCD=5 vs NCD=0 should give `exp(-0.6) ≈ 0.549`. The GBM recovers approximately 0.435 — a reconstruction error of roughly 21%. This is documented in the benchmark results below. Conviction relativity is approximately `exp(0.45) ≈ 1.57`; SHAP gives 1.681 here (7% above true). The `level` column dtype is `str` — filter using string comparison: `rels.filter(pl.col("level") == "5")`.
 
+---
+
+If this is useful, a ⭐ on GitHub helps others find it.
+
 For one-liners, use the convenience function:
 
 ```python
