@@ -129,7 +129,7 @@ class TestAggregateCategorical:
             np.ones(4),
         )
         # All levels should be strings
-        assert result["level"].dtype == pl.Utf8
+        assert result["level"].dtype == pl.String
 
     def test_shap_std_non_negative(self) -> None:
         """Standard deviation of SHAP values must be >= 0 (clipped if needed)."""

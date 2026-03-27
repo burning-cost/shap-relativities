@@ -408,7 +408,7 @@ class SHAPRelativities:
         # unify mismatched types for the same column name, so we normalise
         # here rather than requiring callers to pre-cast their feature columns.
         parts = [
-            p.with_columns(pl.col("level").cast(pl.Utf8))
+            p.with_columns(pl.col("level").cast(pl.String))
             if "level" in p.columns else p
             for p in parts
         ]

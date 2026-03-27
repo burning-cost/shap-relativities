@@ -41,7 +41,7 @@ def plot_categorical(
         show_ci: If True, draw error bars for confidence intervals.
         color: Bar color.
     """
-    levels = data["level"].cast(pl.Utf8).to_numpy()
+    levels = data["level"].cast(pl.String).to_numpy()
     x = np.arange(len(levels))
     relativities = data["relativity"].to_numpy()
 
