@@ -50,6 +50,10 @@ ml = [
 plot = [
     "matplotlib>=3.7",
 ]
+# tqdm for progress indicator during fit() — optional, degrades gracefully
+progress = [
+    "tqdm>=4.60",
+]
 # Everything — use this for a complete install
 all = [
     "shap>=0.42",
@@ -57,6 +61,7 @@ all = [
     "scikit-learn>=1.3",
     "pandas>=2.0",
     "matplotlib>=3.7",
+    "tqdm>=4.60",
 ]
 dev = [
     "pyarrow>=12.0",
@@ -66,6 +71,7 @@ dev = [
     "scikit-learn>=1.3",
     "pandas>=2.0",
     "matplotlib>=3.7",
+    "tqdm>=4.60",
 ]
 
 [project.urls]

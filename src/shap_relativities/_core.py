@@ -32,6 +32,8 @@ inference. The output of extract_relativities() is a Polars DataFrame.
 
 from __future__ import annotations
 
+import threading
+import time
 import warnings
 from typing import Any
 
@@ -43,6 +45,12 @@ try:
     _SHAP_AVAILABLE = True
 except ImportError:
     _SHAP_AVAILABLE = False
+
+try:
+    import tqdm as _tqdm_module
+    _TQDM_AVAILABLE = True
+except ImportError:
+    _TQDM_AVAILABLE = False
 
 from ._aggregation import aggregate_categorical, aggregate_continuous
 from ._normalisation import normalise_base_level, normalise_mean
@@ -81,6 +89,65 @@ def _to_pandas(X: pl.DataFrame):
     """Convert a Polars DataFrame to pandas for shap/catboost bridging."""
     import pandas as pd  # noqa: F401 - required for SHAP
     return X.to_pandas()
+
+
+def _run_with_spinner(fn, n_obs: int, verbose: bool):
+    """
+    Run fn() in the current thread while a background thread shows progress.
+
+    If tqdm is available, uses tqdm.auto.tqdm for a spinner-style bar.
+    If tqdm is not installed, falls back to a simple elapsed-time print.
+    When verbose=False, fn() is called directly with no output.
+
+    Returns the result of fn().
+    """
+    if not verbose:
+        return fn()
+
+    result_holder: list[Any] = []
+    exc_holder: list[BaseException] = []
+
+    def _worker():
+        try:
+            result_holder.append(fn())
+        except BaseException as e:
+            exc_holder.append(e)
+
+    if _TQDM_AVAILABLE:
+        from tqdm.auto import tqdm
+
+        # tqdm.auto picks the right backend (notebook vs terminal).
+        # We use a manual bar with no total — just a spinner showing elapsed time.
+        bar = tqdm(
+            total=None,
+            desc=f"Computing SHAP values ({n_obs:,} observations)",
+            bar_format="{desc} [{elapsed}]",
+            leave=True,
+        )
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        while t.is_alive():
+            bar.update(0)  # refresh elapsed time display
+            t.join(timeout=0.5)
+        bar.close()
+    else:
+        # tqdm not installed — print a plain message and show elapsed time on completion
+        print(
+            f"Computing SHAP values ({n_obs:,} observations)...",
+            end=" ",
+            flush=True,
+        )
+        t0 = time.perf_counter()
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        t.join()
+        elapsed = time.perf_counter() - t0
+        print(f"done ({elapsed:.1f}s)")
+
+    if exc_holder:
+        raise exc_holder[0]
+
+    return result_holder[0]
 
 
 class SHAPRelativities:
@@ -125,6 +192,11 @@ class SHAPRelativities:
         annualise_exposure: If True and exposure is provided, subtract mean
             log(exposure) from the expected_value to give an annualised
             baseline. Default True.
+        verbose: If True (default), show a progress indicator during fit().
+            Set to False to suppress all output — useful in batch jobs,
+            notebooks with tqdm already present, or when calling fit()
+            many times. If tqdm is not installed, falls back to a plain
+            elapsed-time message.
     """
 
     def __init__(
@@ -138,6 +210,7 @@ class SHAPRelativities:
         feature_perturbation: str = "tree_path_dependent",
         n_background_samples: int = 1000,
         annualise_exposure: bool = True,
+        verbose: bool = True,
     ) -> None:
         if not _SHAP_AVAILABLE:
             raise ImportError(
@@ -172,6 +245,7 @@ class SHAPRelativities:
         self._feature_perturbation = feature_perturbation
         self._n_background_samples = n_background_samples
         self._annualise_exposure = annualise_exposure
+        self._verbose = verbose
 
         # Classify features
         self._categorical_features = categorical_features or self._infer_categorical()
@@ -205,7 +279,7 @@ class SHAPRelativities:
             and c not in (self._categorical_features or [])
         ]
 
-    def fit(self) -> "SHAPRelativities":
+    def fit(self, verbose: bool | None = None) -> "SHAPRelativities":
         """
         Compute SHAP values for all features in X.
 
@@ -216,9 +290,19 @@ class SHAPRelativities:
         TreeExplainer. The conversion is a necessary bridge - shap requires
         pandas for column name handling.
 
+        For large datasets (50k+ policies) SHAP computation can take 30-60
+        seconds. A progress indicator is shown by default. To suppress it,
+        pass verbose=False here or set verbose=False in __init__.
+
+        Args:
+            verbose: Override the instance-level verbose setting for this call
+                only. If None (default), the instance-level setting is used.
+
         Returns:
             Self, for method chaining.
         """
+        show_progress = self._verbose if verbose is None else verbose
+
         # Convert to pandas for shap - unavoidable bridge
         X_pd = _to_pandas(self._X)
 
@@ -237,7 +321,10 @@ class SHAPRelativities:
             model_output="raw",
         )
 
-        raw = explainer.shap_values(X_pd)
+        def _compute_shap():
+            return explainer.shap_values(X_pd)
+
+        raw = _run_with_spinner(_compute_shap, n_obs=len(X_pd), verbose=show_progress)
 
         # Some models return a list when there is a single output
         if isinstance(raw, list):
@@ -710,6 +797,7 @@ class SHAPRelativities:
         instance._background_data = None
         instance._n_background_samples = 1000
         instance._annualise_exposure = data.get("annualise_exposure", True)
+        instance._verbose = False  # no-op for deserialized instances
         instance._shap_values = np.array(data["shap_values"])
         instance._expected_value = float(data["expected_value"])
         instance._is_fitted = True
