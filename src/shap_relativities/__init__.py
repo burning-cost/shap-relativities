@@ -17,6 +17,13 @@ Typical usage
 ...     base_levels={"area": "A", "ncd_years": 0},
 ... )
 
+For statistically valid SHAP importance CIs (v0.5.0+):
+
+>>> from shap_relativities import SHAPInference
+>>> si = SHAPInference(shap_values, y, feature_names=["age", "ncd", "area"])
+>>> si.fit()
+>>> si.importance_table()
+
 Or use the convenience wrapper for one-liners:
 
 >>> from shap_relativities import extract_relativities
@@ -31,8 +38,9 @@ from typing import Any
 import polars as pl
 
 from ._core import SHAPRelativities
+from ._inference import SHAPInference
 
-__all__ = ["SHAPRelativities", "extract_relativities"]
+__all__ = ["SHAPRelativities", "SHAPInference", "extract_relativities"]
 
 from importlib.metadata import version, PackageNotFoundError
 
