@@ -336,7 +336,7 @@ class TestInvalidInputs:
             SHAPInference(np.ones((100, 2)), np.ones(99), ["a", "b"])
 
     def test_wrong_feature_names_length_raises(self):
-        with pytest.raises(ValueError, match="n_features"):
+        with pytest.raises(ValueError, match="len\(feature_names\)"):
             SHAPInference(np.ones((100, 2)), np.ones(100), ["a"])
 
     def test_1d_shap_raises(self):

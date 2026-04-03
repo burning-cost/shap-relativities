@@ -579,10 +579,15 @@ class SHAPInference:
         se_diff = float(np.sqrt(max(var_diff, 0.0)))
 
         diff = theta_a - theta_b
-        z_stat = diff / se_diff if se_diff > 0 else float("inf")
-
-        # One-sided p-value for H1: theta_a > theta_b
-        p_value = float(1.0 - stats.norm.cdf(z_stat))
+        # Guard: when both feature arguments are identical, diff==0 and SE==0.
+        # 0/0 is indeterminate; the correct result is z_stat=0, p_value=1.
+        if diff == 0.0 and se_diff == 0.0:
+            z_stat = 0.0
+            p_value = 1.0
+        else:
+            z_stat = diff / se_diff if se_diff > 0 else float("inf")
+            # One-sided p-value for H1: theta_a > theta_b
+            p_value = float(1.0 - stats.norm.cdf(z_stat))
 
         # Two-sided CI on the difference
         z_ci = float(stats.norm.ppf((1 + self.ci_level) / 2))
