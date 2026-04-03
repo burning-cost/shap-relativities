@@ -41,7 +41,7 @@ from shap_relativities._inference import (
 def _small_linear_data(n: int = 300, d: int = 2, seed: int = 0):
     """Return (shap_values, y, feature_names) for a tiny linear DGP."""
     rng = np.random.default_rng(seed)
-    betas = np.array([0.5, 0.2][:d])
+    betas = np.array([0.5 / (j + 1) for j in range(d)])
     X = rng.normal(0, 1, size=(n, d))
     shap_values = X * betas[np.newaxis, :]
     y = np.abs(shap_values.sum(axis=1) + rng.normal(0, 0.3, n))
