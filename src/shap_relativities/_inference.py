@@ -521,9 +521,10 @@ class SHAPInference:
             "theta_upper": upper.tolist(),
             "sigma_hat": sigma_hat.tolist(),
             "se": se.tolist(),
-            "rank": rank.tolist(),
-            "rank_lower": rank_lower.tolist(),
-            "rank_upper": rank_upper.tolist(),
+            # _dense_rank_descending already returns list[int]; no .tolist() needed
+            "rank": rank,
+            "rank_lower": rank_lower,
+            "rank_upper": rank_upper,
             "p_value_nonzero": p_values.tolist(),
         }).sort("rank")
 
