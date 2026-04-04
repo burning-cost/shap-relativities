@@ -1,24 +1,41 @@
 name: Publish to PyPI
 
-# Manual trigger only — packages published via uv publish
 on:
   workflow_dispatch:
 
-permissions:
-  id-token: write
-
 jobs:
-  publish:
+  test-build-publish:
     runs-on: ubuntu-latest
-    environment: pypi
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install build tools
-        run: pip install build
-      - name: Build package
-        run: python -m build
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" || pip install -e ".[test]" || pip install -e .
+
+      - name: Run tests
+        run: |
+          if [ -d tests ]; then
+            python -m pytest tests/ -q --tb=short --timeout=120
+          else
+            echo "No tests directory — skipping"
+          fi
+
+      - name: Build
+        run: |
+          pip install build
+          python -m build
+
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip install twine
+          twine upload --skip-existing dist/*
