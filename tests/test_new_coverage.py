@@ -99,7 +99,7 @@ class TestToPolarsErrorPath:
         assert isinstance(result, pl.DataFrame)
 
     def test_to_polars_accepts_pandas_df(self):
-        import pandas as pd
+        pd = pytest.importorskip("pandas")
         from shap_relativities._core import _to_polars
 
         df = pd.DataFrame({"x": [1, 2, 3]})
@@ -540,6 +540,7 @@ class TestSHAPInferenceRepr:
         assert "not fitted" in r
 
     def test_repr_after_fit(self):
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=100, d=2)
@@ -560,6 +561,7 @@ class TestRankingCIEdgeCases:
 
     @pytest.fixture(scope="class")
     def fitted_si(self):
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=200, d=3, seed=1)
@@ -603,6 +605,7 @@ class TestSHAPInferencePLessThan2:
     """p=1 activates the smoothed estimator; should emit a UserWarning."""
 
     def test_p_one_emits_smoothing_warning(self):
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=100, d=2, seed=5)
@@ -611,6 +614,7 @@ class TestSHAPInferencePLessThan2:
             si.fit()
 
     def test_p_one_importance_table_has_correct_schema(self):
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=100, d=2, seed=6)
@@ -626,6 +630,7 @@ class TestSHAPInferencePLessThan2:
 
     def test_p_one_five_uses_smoothing(self):
         """Any p between 1 and 2 should trigger smoothing warning."""
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=80, d=2, seed=8)
@@ -635,6 +640,7 @@ class TestSHAPInferencePLessThan2:
 
     def test_custom_beta_n_overrides_default(self):
         """Explicitly passing beta_n should suppress the default calculation."""
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=80, d=2, seed=9)
@@ -658,6 +664,7 @@ class TestInfluenceMatrix:
     """influence_matrix should return (n_obs, n_features) copy of rho."""
 
     def test_influence_matrix_shape(self):
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=150, d=3, seed=10)
@@ -668,6 +675,7 @@ class TestInfluenceMatrix:
 
     def test_influence_matrix_is_copy(self):
         """Modifying the returned array must not affect the internal state."""
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=100, d=2, seed=11)
@@ -697,6 +705,7 @@ class TestImportanceTableExtras:
 
     @pytest.fixture(scope="class")
     def fitted_si(self):
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=300, d=2, seed=12)
@@ -725,6 +734,7 @@ class TestImportanceTableExtras:
 
     def test_ci_level_90_gives_narrower_intervals_than_95(self):
         """90% CIs should be narrower than 95% CIs."""
+        pytest.importorskip("sklearn")
         from shap_relativities import SHAPInference
 
         shap_vals, y, names = _small_inference_data(n=200, d=2, seed=13)
@@ -811,6 +821,7 @@ class TestMakeNuisanceEstimator:
     """Test the nuisance estimator factory."""
 
     def test_gradient_boosting_string_returns_estimator(self):
+        pytest.importorskip("sklearn")
         from shap_relativities._inference import _make_nuisance_estimator
 
         est = _make_nuisance_estimator("gradient_boosting")
@@ -819,12 +830,14 @@ class TestMakeNuisanceEstimator:
         assert hasattr(est, "predict")
 
     def test_unknown_string_raises(self):
+        pytest.importorskip("sklearn")
         from shap_relativities._inference import _make_nuisance_estimator
 
         with pytest.raises(ValueError, match="Unknown nuisance_estimator"):
             _make_nuisance_estimator("random_forest")
 
     def test_custom_estimator_returned_as_is(self):
+        pytest.importorskip("sklearn")
         from shap_relativities._inference import _make_nuisance_estimator
         from sklearn.linear_model import Ridge
 
@@ -843,7 +856,7 @@ class TestPlottingEdgeCases:
 
     @pytest.fixture(autouse=True)
     def _use_agg_backend(self):
-        import matplotlib
+        matplotlib = pytest.importorskip("matplotlib")
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         yield
@@ -1001,9 +1014,10 @@ class TestMotorInternalHelpers:
         """Drivers aged 25-29 should have intermediate effects (blended)."""
         from shap_relativities.datasets.motor import _driver_age_effect, TRUE_FREQ_PARAMS
 
-        ages = np.array([25, 27, 29])
+        ages = np.array([26, 27, 28])
         effect = _driver_age_effect(ages)
-        # All effects should be between 0 and the young driver penalty
+        # All effects should be strictly between 0 and the young driver penalty
+        # (age 25 gives blend_factor=1.0 = full effect, so excluded)
         assert all(0 < e < TRUE_FREQ_PARAMS["driver_age_young"] for e in effect)
 
     def test_driver_age_effect_age_25_specific_blend(self):
@@ -1300,7 +1314,8 @@ class TestPlotImportance:
 
     @pytest.fixture(autouse=True)
     def _agg_backend(self):
-        import matplotlib
+        matplotlib = pytest.importorskip("matplotlib")
+        pytest.importorskip("sklearn")
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         yield
